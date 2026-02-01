@@ -1,0 +1,27 @@
+[project]
+name = "ssat-rankings-backend"
+version = "0.1.0"
+description = "SSAT Rankings API - NFL Defensive Player Rankings"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "sqlalchemy>=2.0.0",
+    "nfl-data-py>=0.3.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "httpx>=0.25.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
