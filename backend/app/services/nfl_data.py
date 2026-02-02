@@ -50,6 +50,10 @@ def fetch_defensive_stats(season: int = 2023) -> pd.DataFrame:
             print("PBP data empty, using sample data")
             return _get_sample_data()
 
+        # Filter to regular season only (weeks 1-18)
+        pbp = pbp[pbp['week'] <= 18]
+        print(f"Filtered to regular season: {len(pbp)} plays, weeks 1-18")
+
         # Get rosters for position info
         print("Fetching roster data...")
         rosters = nfl.import_seasonal_rosters([season])
