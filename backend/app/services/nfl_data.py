@@ -67,170 +67,154 @@ def fetch_defensive_stats(season: int = 2023) -> pd.DataFrame:
         print("Aggregating defensive stats from play-by-play...")
 
         # Initialize stats dictionary
-        player_stats = {}
+        player_stats: Dict[str, Dict] = {}
 
-        # Process tackles (solo and assist)
-        for col_prefix, stat_name in [
-            ('solo_tackle_1_player', 'solo_tackles'),
-            ('solo_tackle_2_player', 'solo_tackles'),
-            ('assist_tackle_1_player', 'assists'),
-            ('assist_tackle_2_player', 'assists'),
-            ('assist_tackle_3_player', 'assists'),
-            ('assist_tackle_4_player', 'assists'),
-        ]:
-            id_col = f'{col_prefix}_id'
-            name_col = f'{col_prefix}_name'
-            if id_col in pbp.columns and name_col in pbp.columns:
-                for _, row in pbp[[id_col, name_col]].dropna().iterrows():
+        def init_player(pid: str, pname: str) -> None:
+            if pid not in player_stats:
+                player_stats[pid] = {
+                    'player_id': pid,
+                    'player_name': pname,
+                    'tackles': 0, 'solo_tackles': 0, 'assists': 0,
+                    'sacks': 0.0, 'qb_hits': 0, 'tackles_for_loss': 0,
+                    'passes_defended': 0, 'interceptions': 0,
+                    'forced_fumbles': 0, 'fumble_recoveries': 0,
+                    'defensive_tds': 0, 'games': set()
+                }
+
+        # Process solo tackles
+        for col_num in ['1', '2']:
+            id_col = f'solo_tackle_{col_num}_player_id'
+            name_col = f'solo_tackle_{col_num}_player_name'
+            if id_col in pbp.columns:
+                subset = pbp[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                for _, row in subset.iterrows():
                     pid = row[id_col]
                     pname = row[name_col]
-                    if pid not in player_stats:
-                        player_stats[pid] = {
-                            'player_id': pid,
-                            'player_name': pname,
-                            'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                            'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                            'passes_defended': 0, 'interceptions': 0,
-                            'forced_fumbles': 0, 'fumble_recoveries': 0,
-                            'defensive_tds': 0, 'games': set()
-                        }
-                    player_stats[pid][stat_name] += 1
+                    init_player(pid, pname)
+                    player_stats[pid]['solo_tackles'] += 1
                     player_stats[pid]['tackles'] += 1
-                    if 'game_id' in row:
-                        player_stats[pid]['games'].add(row['game_id'])
+                    player_stats[pid]['games'].add(row['game_id'])
+
+        # Process assist tackles
+        for col_num in ['1', '2', '3', '4']:
+            id_col = f'assist_tackle_{col_num}_player_id'
+            name_col = f'assist_tackle_{col_num}_player_name'
+            if id_col in pbp.columns:
+                subset = pbp[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                for _, row in subset.iterrows():
+                    pid = row[id_col]
+                    pname = row[name_col]
+                    init_player(pid, pname)
+                    player_stats[pid]['assists'] += 1
+                    player_stats[pid]['tackles'] += 1
+                    player_stats[pid]['games'].add(row['game_id'])
 
         # Process sacks
         if 'sack' in pbp.columns:
             sack_plays = pbp[pbp['sack'] == 1]
-            for col in ['sack_player_id', 'half_sack_1_player_id', 'half_sack_2_player_id']:
-                if col in sack_plays.columns:
-                    name_col = col.replace('_id', '_name')
-                    for _, row in sack_plays[[col, name_col, 'game_id']].dropna(subset=[col]).iterrows():
-                        pid = row[col]
-                        pname = row.get(name_col, 'Unknown')
-                        if pid not in player_stats:
-                            player_stats[pid] = {
-                                'player_id': pid, 'player_name': pname,
-                                'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                                'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                                'passes_defended': 0, 'interceptions': 0,
-                                'forced_fumbles': 0, 'fumble_recoveries': 0,
-                                'defensive_tds': 0, 'games': set()
-                            }
-                        sack_val = 0.5 if 'half_sack' in col else 1.0
-                        player_stats[pid]['sacks'] += sack_val
+
+            # Full sacks
+            if 'sack_player_id' in sack_plays.columns:
+                subset = sack_plays[['sack_player_id', 'sack_player_name', 'game_id']].dropna(subset=['sack_player_id'])
+                for _, row in subset.iterrows():
+                    pid = row['sack_player_id']
+                    pname = row['sack_player_name']
+                    init_player(pid, pname)
+                    player_stats[pid]['sacks'] += 1.0
+                    player_stats[pid]['games'].add(row['game_id'])
+
+            # Half sacks
+            for col_num in ['1', '2']:
+                id_col = f'half_sack_{col_num}_player_id'
+                name_col = f'half_sack_{col_num}_player_name'
+                if id_col in sack_plays.columns:
+                    subset = sack_plays[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                    for _, row in subset.iterrows():
+                        pid = row[id_col]
+                        pname = row[name_col]
+                        init_player(pid, pname)
+                        player_stats[pid]['sacks'] += 0.5
                         player_stats[pid]['games'].add(row['game_id'])
 
         # Process interceptions
-        if 'interception_player_id' in pbp.columns:
+        if 'interception' in pbp.columns and 'interception_player_id' in pbp.columns:
             int_plays = pbp[pbp['interception'] == 1]
-            for _, row in int_plays[['interception_player_id', 'interception_player_name', 'game_id']].dropna(subset=['interception_player_id']).iterrows():
+            subset = int_plays[['interception_player_id', 'interception_player_name', 'game_id']].dropna(subset=['interception_player_id'])
+            for _, row in subset.iterrows():
                 pid = row['interception_player_id']
-                pname = row.get('interception_player_name', 'Unknown')
-                if pid not in player_stats:
-                    player_stats[pid] = {
-                        'player_id': pid, 'player_name': pname,
-                        'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                        'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                        'passes_defended': 0, 'interceptions': 0,
-                        'forced_fumbles': 0, 'fumble_recoveries': 0,
-                        'defensive_tds': 0, 'games': set()
-                    }
+                pname = row['interception_player_name']
+                init_player(pid, pname)
                 player_stats[pid]['interceptions'] += 1
                 player_stats[pid]['games'].add(row['game_id'])
 
         # Process forced fumbles
-        if 'forced_fumble_player_1_player_id' in pbp.columns:
+        if 'fumble_forced' in pbp.columns:
             ff_plays = pbp[pbp['fumble_forced'] == 1]
-            for col in ['forced_fumble_player_1_player_id', 'forced_fumble_player_2_player_id']:
-                if col in ff_plays.columns:
-                    name_col = col.replace('_id', '_name')
-                    for _, row in ff_plays[[col, name_col, 'game_id']].dropna(subset=[col]).iterrows():
-                        pid = row[col]
-                        pname = row.get(name_col, 'Unknown')
-                        if pid not in player_stats:
-                            player_stats[pid] = {
-                                'player_id': pid, 'player_name': pname,
-                                'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                                'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                                'passes_defended': 0, 'interceptions': 0,
-                                'forced_fumbles': 0, 'fumble_recoveries': 0,
-                                'defensive_tds': 0, 'games': set()
-                            }
+            for col_num in ['1', '2']:
+                id_col = f'forced_fumble_player_{col_num}_player_id'
+                name_col = f'forced_fumble_player_{col_num}_player_name'
+                if id_col in ff_plays.columns:
+                    subset = ff_plays[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                    for _, row in subset.iterrows():
+                        pid = row[id_col]
+                        pname = row[name_col]
+                        init_player(pid, pname)
                         player_stats[pid]['forced_fumbles'] += 1
                         player_stats[pid]['games'].add(row['game_id'])
 
-        # Process fumble recoveries
+        # Process fumble recoveries (by defense)
         if 'fumble_recovery_1_player_id' in pbp.columns:
+            # Only count defensive recoveries (fumble_lost means offense lost it)
             fr_plays = pbp[pbp['fumble_lost'] == 1]
-            for col in ['fumble_recovery_1_player_id', 'fumble_recovery_2_player_id']:
-                if col in fr_plays.columns:
-                    name_col = col.replace('_id', '_name')
-                    for _, row in fr_plays[[col, name_col, 'game_id']].dropna(subset=[col]).iterrows():
-                        pid = row[col]
-                        pname = row.get(name_col, 'Unknown')
-                        if pid not in player_stats:
-                            player_stats[pid] = {
-                                'player_id': pid, 'player_name': pname,
-                                'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                                'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                                'passes_defended': 0, 'interceptions': 0,
-                                'forced_fumbles': 0, 'fumble_recoveries': 0,
-                                'defensive_tds': 0, 'games': set()
-                            }
+            for col_num in ['1', '2']:
+                id_col = f'fumble_recovery_{col_num}_player_id'
+                name_col = f'fumble_recovery_{col_num}_player_name'
+                if id_col in fr_plays.columns:
+                    subset = fr_plays[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                    for _, row in subset.iterrows():
+                        pid = row[id_col]
+                        pname = row[name_col]
+                        init_player(pid, pname)
                         player_stats[pid]['fumble_recoveries'] += 1
                         player_stats[pid]['games'].add(row['game_id'])
 
-        # Process pass deflections
-        if 'pass_defense_1_player_id' in pbp.columns:
-            for col in ['pass_defense_1_player_id', 'pass_defense_2_player_id']:
-                if col in pbp.columns:
-                    name_col = col.replace('_id', '_name')
-                    for _, row in pbp[[col, name_col, 'game_id']].dropna(subset=[col]).iterrows():
-                        pid = row[col]
-                        pname = row.get(name_col, 'Unknown')
-                        if pid not in player_stats:
-                            player_stats[pid] = {
-                                'player_id': pid, 'player_name': pname,
-                                'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                                'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                                'passes_defended': 0, 'interceptions': 0,
-                                'forced_fumbles': 0, 'fumble_recoveries': 0,
-                                'defensive_tds': 0, 'games': set()
-                            }
-                        player_stats[pid]['passes_defended'] += 1
-                        player_stats[pid]['games'].add(row['game_id'])
+        # Process pass deflections/breakups
+        for col_num in ['1', '2']:
+            id_col = f'pass_defense_{col_num}_player_id'
+            name_col = f'pass_defense_{col_num}_player_name'
+            if id_col in pbp.columns:
+                subset = pbp[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                for _, row in subset.iterrows():
+                    pid = row[id_col]
+                    pname = row[name_col]
+                    init_player(pid, pname)
+                    player_stats[pid]['passes_defended'] += 1
+                    player_stats[pid]['games'].add(row['game_id'])
 
         # Process tackles for loss
         if 'tackled_for_loss' in pbp.columns:
             tfl_plays = pbp[pbp['tackled_for_loss'] == 1]
-            for col in ['solo_tackle_1_player_id', 'solo_tackle_2_player_id',
-                       'assist_tackle_1_player_id', 'assist_tackle_2_player_id']:
-                if col in tfl_plays.columns:
-                    for _, row in tfl_plays[[col, 'game_id']].dropna(subset=[col]).iterrows():
-                        pid = row[col]
+            for col_num in ['1', '2']:
+                id_col = f'tackle_for_loss_{col_num}_player_id'
+                if id_col in tfl_plays.columns:
+                    subset = tfl_plays[[id_col, 'game_id']].dropna(subset=[id_col])
+                    for _, row in subset.iterrows():
+                        pid = row[id_col]
                         if pid in player_stats:
                             player_stats[pid]['tackles_for_loss'] += 1
 
         # Process QB hits
-        if 'qb_hit_1_player_id' in pbp.columns:
-            for col in ['qb_hit_1_player_id', 'qb_hit_2_player_id']:
-                if col in pbp.columns:
-                    name_col = col.replace('_id', '_name')
-                    for _, row in pbp[[col, name_col, 'game_id']].dropna(subset=[col]).iterrows():
-                        pid = row[col]
-                        pname = row.get(name_col, 'Unknown')
-                        if pid not in player_stats:
-                            player_stats[pid] = {
-                                'player_id': pid, 'player_name': pname,
-                                'tackles': 0, 'solo_tackles': 0, 'assists': 0,
-                                'sacks': 0, 'qb_hits': 0, 'tackles_for_loss': 0,
-                                'passes_defended': 0, 'interceptions': 0,
-                                'forced_fumbles': 0, 'fumble_recoveries': 0,
-                                'defensive_tds': 0, 'games': set()
-                            }
-                        player_stats[pid]['qb_hits'] += 1
-                        player_stats[pid]['games'].add(row['game_id'])
+        for col_num in ['1', '2']:
+            id_col = f'qb_hit_{col_num}_player_id'
+            name_col = f'qb_hit_{col_num}_player_name'
+            if id_col in pbp.columns:
+                subset = pbp[[id_col, name_col, 'game_id']].dropna(subset=[id_col])
+                for _, row in subset.iterrows():
+                    pid = row[id_col]
+                    pname = row[name_col]
+                    init_player(pid, pname)
+                    player_stats[pid]['qb_hits'] += 1
+                    player_stats[pid]['games'].add(row['game_id'])
 
         # Convert to DataFrame
         stats_list = []
@@ -251,6 +235,10 @@ def fetch_defensive_stats(season: int = 2023) -> pd.DataFrame:
         df = df[df['games_played'] >= 1]
 
         print(f"Found {len(df)} defensive players with stats")
+
+        # Debug: show top tacklers
+        top_tacklers = df.nlargest(5, 'tackles')[['player_name', 'team', 'tackles', 'solo_tackles', 'games_played']]
+        print(f"Top 5 tacklers:\n{top_tacklers}")
 
         _data_cache = df
         return df
@@ -336,7 +324,7 @@ def process_player_rankings(
         List of player rankings sorted by overall score
     """
     if data is None:
-        data = fetch_defensive_stats()  # Now uses real data!
+        data = fetch_defensive_stats()
 
     # Make a copy to avoid modifying original
     data = data.copy()
@@ -377,7 +365,7 @@ def process_player_rankings(
         player_id = row.get("player_id", str(idx))
         # Convert player_id to int if possible
         try:
-            player_id_int = int(hash(player_id) % 1000000)
+            player_id_int = abs(hash(player_id)) % 1000000
         except:
             player_id_int = idx + 1
 
