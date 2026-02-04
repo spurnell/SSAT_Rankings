@@ -12,7 +12,8 @@ export default function Home() {
             </h1>
             <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
               Data-driven rankings using z-score methodology for fair, position-specific
-              player evaluation across all NFL positions.
+              player evaluation across all NFL positions. Updated each season based on
+              full regular season performance (Weeks 1-18).
             </p>
             <div className="flex gap-4 justify-center">
               <Link
@@ -41,7 +42,8 @@ export default function Home() {
           <p className="text-lg text-slate-600 mb-4">
             Our rankings use <span className="font-semibold">z-score normalization</span> to
             compare players fairly within their position group. Each player is evaluated
-            on position-specific categories and scored on a <span className="font-semibold">60-100 scale</span>.
+            on position-specific categories and scored on a <span className="font-semibold">60-100 scale</span> based
+            on their <span className="font-semibold">full season statistics</span>.
           </p>
           <Link
             href="/how-it-works"

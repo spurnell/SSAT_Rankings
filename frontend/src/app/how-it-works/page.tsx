@@ -9,7 +9,8 @@ export default function HowItWorksPage() {
         <p className="text-xl text-slate-600 max-w-2xl mx-auto">
           The Standardized Statistical Assessment Tool (SSAT) creates fair,
           comparable rankings across all NFL positions using statistical
-          normalization and position-specific evaluation criteria.
+          normalization and position-specific evaluation criteria. Rankings are
+          calculated from <span className="font-semibold">full regular season data (Weeks 1-18)</span>.
         </p>
       </section>
 
