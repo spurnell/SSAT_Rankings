@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import PlayerProfilePanel from "./PlayerProfilePanel";
+import MobileProfileSheet from "./MobileProfileSheet";
 import { fetchRankings, fetchPositionGroups, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
 
 type SortKey = string;
@@ -40,6 +41,15 @@ export default function RankingsTable() {
     key: SortKey;
     direction: "asc" | "desc";
   } | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // Get current position group config
   const currentGroup = useMemo(() => {
@@ -227,8 +237,8 @@ export default function RankingsTable() {
 
   return (
     <div>
-      {/* Player Profile Panel */}
-      {selectedPlayers.length > 0 && (
+      {/* Player Profile Panel - Desktop */}
+      {selectedPlayers.length > 0 && !isMobile && (
         <div className="sticky top-0 z-10">
           <PlayerProfilePanel
             players={selectedPlayers}
@@ -238,6 +248,17 @@ export default function RankingsTable() {
             onClose={() => setSelectedPlayerIds([])}
           />
         </div>
+      )}
+
+      {/* Player Profile Sheet - Mobile */}
+      {selectedPlayers.length > 0 && isMobile && (
+        <MobileProfileSheet
+          players={selectedPlayers}
+          categories={currentCategories}
+          ranks={selectedPlayers.map((p) => statRanks.get(p.id) || {})}
+          totalPlayers={players.length}
+          onClose={() => setSelectedPlayerIds([])}
+        />
       )}
 
       {/* Filters */}
