@@ -8,11 +8,11 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <h1 className="text-4xl sm:text-5xl font-bold mb-6">
-              NFL Defensive Player Rankings
+              SSAT NFL Player Rankings
             </h1>
             <p className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
-              Data-driven rankings using advanced z-score methodology to evaluate
-              NFL defensive players across multiple statistical categories.
+              Data-driven rankings using z-score methodology for fair, position-specific
+              player evaluation across all NFL positions.
             </p>
             <div className="flex gap-4 justify-center">
               <Link
@@ -32,42 +32,36 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-slate-900 mb-12">
+      {/* How We Rank Section */}
+      <section className="py-16 bg-slate-50">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl font-bold text-slate-900 mb-6">
             How We Rank Players
           </h2>
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              {
-                title: "Run Defense",
-                description: "Tackle efficiency, run stops, and yards allowed metrics",
-              },
-              {
-                title: "Pass Rush",
-                description: "Sacks, pressures, and quarterback disruption stats",
-              },
-              {
-                title: "Coverage",
-                description: "Pass breakups, interceptions, and completion percentage allowed",
-              },
-              {
-                title: "Playmaking",
-                description: "Turnovers forced, big plays, and impact moments",
-              },
-            ].map((feature) => (
-              <div
-                key={feature.title}
-                className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
-              >
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-slate-600">{feature.description}</p>
-              </div>
-            ))}
-          </div>
+          <p className="text-lg text-slate-600 mb-4">
+            Our rankings use <span className="font-semibold">z-score normalization</span> to
+            compare players fairly within their position group. Each player is evaluated
+            on position-specific categories and scored on a <span className="font-semibold">60-100 scale</span>.
+          </p>
+          <Link
+            href="/how-it-works"
+            className="inline-flex items-center text-blue-600 hover:text-blue-700 font-semibold transition-colors"
+          >
+            Learn more about our methodology
+            <svg
+              className="ml-2 w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </Link>
         </div>
       </section>
 

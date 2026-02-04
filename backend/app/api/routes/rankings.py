@@ -2,83 +2,183 @@ from typing import List, Optional, Dict
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.schemas import PlayerRanking, PlayerDetail, CategoryWeights, PlayerStats
+from app.models.schemas import (
+    PlayerRanking,
+    PlayerDetail,
+    PositionGroupInfo,
+    CategoryInfo,
+    LegacyPlayerDetail,
+    PlayerStats,
+)
 from app.services.nfl_data import process_player_rankings
+from app.core.position_config import get_position_group_list, POSITION_GROUPS
 
 router = APIRouter()
 
-# Cache for player data
-_player_cache: Optional[List[Dict]] = None
+# Cache for player data by position group
+_player_cache: Dict[str, List[Dict]] = {}
 
 
-def get_cached_rankings() -> List[Dict]:
+def get_cached_rankings(position_group: str = "DEF") -> List[Dict]:
+    """Get cached rankings for a position group."""
     global _player_cache
-    if _player_cache is None:
-        _player_cache = process_player_rankings()
-    return _player_cache
+    if position_group not in _player_cache:
+        _player_cache[position_group] = process_player_rankings(position_group=position_group)
+    return _player_cache[position_group]
 
 
-@router.get("/rankings", response_model=List[PlayerRanking])
-async def get_rankings(
-    position: Optional[str] = Query(None, description="Filter by position (DL, EDGE, LB, CB, S)"),
+def clear_cache():
+    """Clear the rankings cache."""
+    global _player_cache
+    _player_cache = {}
+
+
+@router.get("/position-groups", response_model=List[PositionGroupInfo])
+async def get_position_groups():
+    """
+    Get list of all available position groups with their categories.
+    """
+    return [
+        PositionGroupInfo(
+            id=group["id"],
+            name=group["name"],
+            categories=[
+                CategoryInfo(id=cat["id"], name=cat["name"])
+                for cat in group["categories"]
+            ],
+            sub_positions=group.get("sub_positions")
+        )
+        for group in get_position_group_list()
+    ]
+
+
+@router.get("/rankings/{position_group}", response_model=List[PlayerDetail])
+async def get_rankings_by_group(
+    position_group: str,
+    position: Optional[str] = Query(None, description="Filter by sub-position (for DEF group)"),
     min_games: int = Query(1, ge=1, le=17, description="Minimum games played"),
 ):
     """
-    Get ranked list of defensive players.
-    Optionally filter by position and minimum games played.
+    Get ranked list of players for a specific position group.
+
+    Position groups: DEF, QB, RB, WR, TE, K
     """
-    weights = None  # Use default equal weights
+    if position_group not in POSITION_GROUPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
+        )
 
     rankings = process_player_rankings(
         min_games=min_games,
         position_filter=position,
-        weights=weights,
+        position_group=position_group,
     )
 
     return [
-        PlayerRanking(
+        PlayerDetail(
             id=p["id"],
             name=p["name"],
             team=p["team"],
             position=p["position"],
             games_played=p["games_played"],
             overall_score=p["overall_score"],
-            run_defense_score=p["run_defense_score"],
-            pass_rush_score=p["pass_rush_score"],
-            coverage_score=p["coverage_score"],
-            playmaking_score=p["playmaking_score"],
+            position_group=p["position_group"],
+            category_scores=p["category_scores"],
+            stats=p["stats"],
         )
         for p in rankings
     ]
 
 
-@router.get("/players/{player_id}", response_model=PlayerDetail)
-async def get_player(player_id: int):
+@router.get("/rankings", response_model=List[LegacyPlayerDetail])
+async def get_rankings(
+    position: Optional[str] = Query(None, description="Filter by position (DL, EDGE, LB, CB, S)"),
+    min_games: int = Query(1, ge=1, le=17, description="Minimum games played"),
+):
+    """
+    Get ranked list of defensive players (legacy endpoint for backward compatibility).
+    Optionally filter by position and minimum games played.
+    """
+    rankings = process_player_rankings(
+        min_games=min_games,
+        position_filter=position,
+        position_group="DEF",
+    )
+
+    # Convert to legacy format
+    return [
+        LegacyPlayerDetail(
+            id=p["id"],
+            name=p["name"],
+            team=p["team"],
+            position=p["position"],
+            games_played=p["games_played"],
+            overall_score=p["overall_score"],
+            run_defense_score=p["category_scores"].get("run_defense", 80.0),
+            pass_rush_score=p["category_scores"].get("pass_rush", 80.0),
+            coverage_score=p["category_scores"].get("coverage", 80.0),
+            playmaking_score=p["category_scores"].get("playmaking", 80.0),
+            stats=PlayerStats(**{
+                k: v for k, v in p["stats"].items()
+                if k in PlayerStats.model_fields
+            }),
+        )
+        for p in rankings
+    ]
+
+
+@router.get("/players/{player_id}", response_model=LegacyPlayerDetail)
+async def get_player(
+    player_id: int,
+    position_group: str = Query("DEF", description="Position group to search in"),
+):
     """Get detailed information for a specific player."""
-    rankings = get_cached_rankings()
+    rankings = get_cached_rankings(position_group)
 
     player = next((p for p in rankings if p["id"] == player_id), None)
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
 
-    return PlayerDetail(
+    # For DEF position group, return legacy format
+    if position_group == "DEF":
+        return LegacyPlayerDetail(
+            id=player["id"],
+            name=player["name"],
+            team=player["team"],
+            position=player["position"],
+            games_played=player["games_played"],
+            overall_score=player["overall_score"],
+            run_defense_score=player["category_scores"].get("run_defense", 80.0),
+            pass_rush_score=player["category_scores"].get("pass_rush", 80.0),
+            coverage_score=player["category_scores"].get("coverage", 80.0),
+            playmaking_score=player["category_scores"].get("playmaking", 80.0),
+            stats=PlayerStats(**{
+                k: v for k, v in player["stats"].items()
+                if k in PlayerStats.model_fields
+            }),
+        )
+
+    # For other position groups, return new format (but using legacy response model for now)
+    return LegacyPlayerDetail(
         id=player["id"],
         name=player["name"],
         team=player["team"],
         position=player["position"],
         games_played=player["games_played"],
         overall_score=player["overall_score"],
-        run_defense_score=player["run_defense_score"],
-        pass_rush_score=player["pass_rush_score"],
-        coverage_score=player["coverage_score"],
-        playmaking_score=player["playmaking_score"],
-        stats=PlayerStats(**player["stats"]),
+        run_defense_score=80.0,
+        pass_rush_score=80.0,
+        coverage_score=80.0,
+        playmaking_score=80.0,
+        stats=PlayerStats(),
     )
 
 
-@router.get("/compare", response_model=List[PlayerDetail])
+@router.get("/compare", response_model=List[LegacyPlayerDetail])
 async def compare_players(
     ids: str = Query(..., description="Comma-separated player IDs to compare"),
+    position_group: str = Query("DEF", description="Position group"),
 ):
     """Compare multiple players side by side."""
     try:
@@ -91,25 +191,28 @@ async def compare_players(
     if len(player_ids) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 players can be compared")
 
-    rankings = get_cached_rankings()
+    rankings = get_cached_rankings(position_group)
     players = []
 
     for pid in player_ids:
         player = next((p for p in rankings if p["id"] == pid), None)
         if player:
             players.append(
-                PlayerDetail(
+                LegacyPlayerDetail(
                     id=player["id"],
                     name=player["name"],
                     team=player["team"],
                     position=player["position"],
                     games_played=player["games_played"],
                     overall_score=player["overall_score"],
-                    run_defense_score=player["run_defense_score"],
-                    pass_rush_score=player["pass_rush_score"],
-                    coverage_score=player["coverage_score"],
-                    playmaking_score=player["playmaking_score"],
-                    stats=PlayerStats(**player["stats"]),
+                    run_defense_score=player["category_scores"].get("run_defense", 80.0),
+                    pass_rush_score=player["category_scores"].get("pass_rush", 80.0),
+                    coverage_score=player["category_scores"].get("coverage", 80.0),
+                    playmaking_score=player["category_scores"].get("playmaking", 80.0),
+                    stats=PlayerStats(**{
+                        k: v for k, v in player["stats"].items()
+                        if k in PlayerStats.model_fields
+                    }),
                 )
             )
 
@@ -121,7 +224,8 @@ async def compare_players(
 
 @router.post("/calculate", response_model=List[PlayerRanking])
 async def calculate_rankings(
-    weights: CategoryWeights = CategoryWeights(),
+    position_group: str = Query("DEF", description="Position group"),
+    weights: Optional[Dict[str, float]] = None,
     min_games: int = Query(1, ge=1, le=17),
     position: Optional[str] = Query(None),
 ):
@@ -130,17 +234,11 @@ async def calculate_rankings(
 
     Weights should sum to 1.0 for proper scaling.
     """
-    weight_dict = {
-        "run_defense": weights.run_defense,
-        "pass_rush": weights.pass_rush,
-        "coverage": weights.coverage,
-        "playmaking": weights.playmaking,
-    }
-
     rankings = process_player_rankings(
         min_games=min_games,
         position_filter=position,
-        weights=weight_dict,
+        weights=weights,
+        position_group=position_group,
     )
 
     return [
@@ -151,10 +249,8 @@ async def calculate_rankings(
             position=p["position"],
             games_played=p["games_played"],
             overall_score=p["overall_score"],
-            run_defense_score=p["run_defense_score"],
-            pass_rush_score=p["pass_rush_score"],
-            coverage_score=p["coverage_score"],
-            playmaking_score=p["playmaking_score"],
+            position_group=p["position_group"],
+            category_scores=p["category_scores"],
         )
         for p in rankings
     ]

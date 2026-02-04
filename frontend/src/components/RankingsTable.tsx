@@ -1,47 +1,93 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import PlayerProfilePanel from "./PlayerProfilePanel";
+import { fetchRankings, fetchPositionGroups, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
 
-interface Player {
-  id: number;
-  name: string;
-  team: string;
-  position: string;
-  games_played: number;
-  overall_score: number;
-  run_defense_score: number;
-  pass_rush_score: number;
-  coverage_score: number;
-  playmaking_score: number;
+type SortKey = string;
+
+function calculateStatRanks(players: PlayerDetail[]): Map<number, Record<string, number>> {
+  if (players.length === 0) return new Map();
+
+  // Get all stat keys from first player
+  const statKeys = Object.keys(players[0]?.stats || {});
+  const rankMap = new Map<number, Record<string, number>>();
+
+  for (const stat of statKeys) {
+    const sorted = [...players].sort((a, b) =>
+      (b.stats[stat] || 0) - (a.stats[stat] || 0)
+    );
+    sorted.forEach((player, index) => {
+      if (!rankMap.has(player.id)) rankMap.set(player.id, {});
+      rankMap.get(player.id)![stat] = index + 1;
+    });
+  }
+  return rankMap;
 }
 
-const positions = ["All", "DL", "EDGE", "LB", "CB", "S"];
-
 export default function RankingsTable() {
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [players, setPlayers] = useState<PlayerDetail[]>([]);
+  const [positionGroups, setPositionGroups] = useState<PositionGroup[]>([]);
+  const [selectedPositionGroup, setSelectedPositionGroup] = useState<string>("RB");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [positionFilter, setPositionFilter] = useState("All");
+  const [teamFilter, setTeamFilter] = useState("All");
   const [minGames, setMinGames] = useState(1);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortConfig, setSortConfig] = useState<{
+    key: SortKey;
+    direction: "asc" | "desc";
+  } | null>(null);
 
+  // Get current position group config
+  const currentGroup = useMemo(() => {
+    return positionGroups.find(g => g.id === selectedPositionGroup);
+  }, [positionGroups, selectedPositionGroup]);
+
+  const currentCategories = useMemo(() => {
+    return currentGroup?.categories || [];
+  }, [currentGroup]);
+
+  // Fetch position groups on mount
   useEffect(() => {
-    async function fetchRankings() {
+    async function loadPositionGroups() {
       try {
-        const params = new URLSearchParams();
-        if (positionFilter !== "All") {
-          params.append("position", positionFilter);
-        }
-        params.append("min_games", minGames.toString());
+        const groups = await fetchPositionGroups();
+        setPositionGroups(groups);
+      } catch (err) {
+        console.error("Failed to load position groups:", err);
+        // Fallback to DEF only
+        setPositionGroups([{
+          id: "DEF",
+          name: "Defensive Players",
+          categories: [
+            { id: "run_defense", name: "Run Defense" },
+            { id: "pass_rush", name: "Pass Rush" },
+            { id: "coverage", name: "Coverage" },
+            { id: "playmaking", name: "Playmaking" },
+          ]
+        }]);
+      }
+    }
+    loadPositionGroups();
+  }, []);
 
-        const response = await fetch(
-          `http://localhost:8000/api/rankings?${params.toString()}`
-        );
-        if (!response.ok) {
-          throw new Error("Failed to fetch rankings");
-        }
-        const data = await response.json();
+  // Fetch rankings when filters change
+  useEffect(() => {
+    async function loadRankings() {
+      setLoading(true);
+      try {
+        const data = await fetchRankings({
+          position_group: selectedPositionGroup,
+          position: positionFilter !== "All" ? positionFilter : undefined,
+          min_games: minGames,
+        });
         setPlayers(data);
         setError(null);
+        // Reset selection when position group changes
+        setSelectedPlayerIds([]);
       } catch (err) {
         setError("Unable to load rankings. Make sure the backend is running.");
         console.error(err);
@@ -50,10 +96,109 @@ export default function RankingsTable() {
       }
     }
 
-    fetchRankings();
-  }, [positionFilter, minGames]);
+    loadRankings();
+  }, [selectedPositionGroup, positionFilter, minGames]);
+
+  // Reset position filter when position group changes
+  useEffect(() => {
+    setPositionFilter("All");
+  }, [selectedPositionGroup]);
+
+  // Auto-select top 2 players on initial load
+  useEffect(() => {
+    if (players.length >= 2 && selectedPlayerIds.length === 0) {
+      setSelectedPlayerIds([players[0].id, players[1].id]);
+    }
+  }, [players, selectedPlayerIds.length]);
 
   const formatScore = (score: number) => score.toFixed(1);
+
+  const teams = useMemo(() => {
+    const uniqueTeams = Array.from(new Set(players.map((p) => p.team))).sort();
+    return ["All", ...uniqueTeams];
+  }, [players]);
+
+  const statRanks = useMemo(() => calculateStatRanks(players), [players]);
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig((current) => {
+      if (current?.key === key) {
+        return current.direction === "desc"
+          ? { key, direction: "asc" }
+          : null;
+      }
+      return { key, direction: "desc" };
+    });
+  };
+
+  const filteredAndSortedPlayers = useMemo(() => {
+    let result = players;
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((p) => p.name.toLowerCase().includes(query));
+    }
+
+    if (teamFilter !== "All") {
+      result = result.filter((p) => p.team === teamFilter);
+    }
+
+    if (!sortConfig) return result;
+
+    return [...result].sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+
+      if (sortConfig.key === "name") {
+        aVal = a.name;
+        bVal = b.name;
+      } else if (sortConfig.key === "team") {
+        aVal = a.team;
+        bVal = b.team;
+      } else if (sortConfig.key === "position") {
+        aVal = a.position;
+        bVal = b.position;
+      } else if (sortConfig.key === "games_played") {
+        aVal = a.games_played;
+        bVal = b.games_played;
+      } else if (sortConfig.key === "overall_score") {
+        aVal = a.overall_score;
+        bVal = b.overall_score;
+      } else {
+        // Category score
+        aVal = a.category_scores[sortConfig.key] || 0;
+        bVal = b.category_scores[sortConfig.key] || 0;
+      }
+
+      if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [players, searchQuery, teamFilter, sortConfig]);
+
+  const selectedPlayers = useMemo(() => {
+    return selectedPlayerIds
+      .map((id) => players.find((p) => p.id === id))
+      .filter((p): p is PlayerDetail => p !== undefined);
+  }, [players, selectedPlayerIds]);
+
+  const handleRowClick = (playerId: number) => {
+    setSelectedPlayerIds((current) => {
+      if (current.includes(playerId)) {
+        return current.filter((id) => id !== playerId);
+      } else if (current.length < 2) {
+        return [...current, playerId];
+      } else {
+        return [current[0], playerId];
+      }
+    });
+  };
+
+  const getSortIndicator = (key: SortKey) => {
+    if (sortConfig?.key !== key) return null;
+    return sortConfig.direction === "asc" ? " ↑" : " ↓";
+  };
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return "text-green-600 font-semibold";
@@ -62,22 +207,105 @@ export default function RankingsTable() {
     return "text-red-600";
   };
 
+  // Short category names for table headers
+  const getCategoryShortName = (cat: CategoryInfo): string => {
+    const shortNames: Record<string, string> = {
+      run_defense: "Run Def",
+      pass_rush: "Pass Rush",
+      coverage: "Coverage",
+      playmaking: "Playmaking",
+      efficiency: "Efficiency",
+      volume: "Volume",
+      ball_security: "Ball Sec",
+      scoring: "Scoring",
+      receiving: "Receiving",
+      accuracy: "Accuracy",
+      clutch: "Clutch",
+    };
+    return shortNames[cat.id] || cat.name;
+  };
+
   return (
     <div>
+      {/* Player Profile Panel */}
+      {selectedPlayers.length > 0 && (
+        <div className="sticky top-0 z-10">
+          <PlayerProfilePanel
+            players={selectedPlayers}
+            categories={currentCategories}
+            ranks={selectedPlayers.map((p) => statRanks.get(p.id) || {})}
+            totalPlayers={players.length}
+            onClose={() => setSelectedPlayerIds([])}
+          />
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-4 mb-6">
+        {/* Player Search */}
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">
-            Position
+            Search Player
+          </label>
+          <input
+            type="text"
+            placeholder="Search by name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="block w-48 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+          />
+        </div>
+
+        {/* Position Group Selector */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Position Group
           </label>
           <select
-            value={positionFilter}
-            onChange={(e) => setPositionFilter(e.target.value)}
+            value={selectedPositionGroup}
+            onChange={(e) => setSelectedPositionGroup(e.target.value)}
             className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
           >
-            {positions.map((pos) => (
-              <option key={pos} value={pos}>
-                {pos === "All" ? "All Positions" : pos}
+            {positionGroups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Sub-position filter (only for groups with sub_positions) */}
+        {currentGroup?.sub_positions && currentGroup.sub_positions.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Position
+            </label>
+            <select
+              value={positionFilter}
+              onChange={(e) => setPositionFilter(e.target.value)}
+              className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+            >
+              {currentGroup.sub_positions.map((pos) => (
+                <option key={pos} value={pos}>
+                  {pos === "All" ? "All Positions" : pos}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            Team
+          </label>
+          <select
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+            className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+          >
+            {teams.map((team) => (
+              <option key={team} value={team}>
+                {team === "All" ? "All Teams" : team}
               </option>
             ))}
           </select>
@@ -119,38 +347,61 @@ export default function RankingsTable() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Rank
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Player
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => handleSort("name")}
+                  >
+                    Player{getSortIndicator("name")}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Team
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => handleSort("team")}
+                  >
+                    Team{getSortIndicator("team")}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Pos
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => handleSort("position")}
+                  >
+                    Pos{getSortIndicator("position")}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    GP
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => handleSort("games_played")}
+                  >
+                    GP{getSortIndicator("games_played")}
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Overall
+                  <th
+                    className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                    onClick={() => handleSort("overall_score")}
+                  >
+                    Overall{getSortIndicator("overall_score")}
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Run Def
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Pass Rush
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Coverage
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Playmaking
-                  </th>
+                  {/* Dynamic category columns */}
+                  {currentCategories.map((cat) => (
+                    <th
+                      key={cat.id}
+                      className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                      onClick={() => handleSort(cat.id)}
+                    >
+                      {getCategoryShortName(cat)}{getSortIndicator(cat.id)}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                {players.map((player, index) => (
-                  <tr key={player.id} className="hover:bg-slate-50">
+                {filteredAndSortedPlayers.map((player, index) => (
+                  <tr
+                    key={player.id}
+                    className={`hover:bg-slate-50 relative cursor-pointer transition-colors ${
+                      selectedPlayerIds[0] === player.id
+                        ? "bg-blue-50 ring-2 ring-blue-500 ring-inset"
+                        : selectedPlayerIds[1] === player.id
+                        ? "bg-orange-50 ring-2 ring-orange-500 ring-inset"
+                        : ""
+                    }`}
+                    onClick={() => handleRowClick(player.id)}
+                  >
                     <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-900">
                       {index + 1}
                     </td>
@@ -173,40 +424,23 @@ export default function RankingsTable() {
                     >
                       {formatScore(player.overall_score)}
                     </td>
-                    <td
-                      className={`px-4 py-3 whitespace-nowrap text-sm text-center ${getScoreColor(
-                        player.run_defense_score
-                      )}`}
-                    >
-                      {formatScore(player.run_defense_score)}
-                    </td>
-                    <td
-                      className={`px-4 py-3 whitespace-nowrap text-sm text-center ${getScoreColor(
-                        player.pass_rush_score
-                      )}`}
-                    >
-                      {formatScore(player.pass_rush_score)}
-                    </td>
-                    <td
-                      className={`px-4 py-3 whitespace-nowrap text-sm text-center ${getScoreColor(
-                        player.coverage_score
-                      )}`}
-                    >
-                      {formatScore(player.coverage_score)}
-                    </td>
-                    <td
-                      className={`px-4 py-3 whitespace-nowrap text-sm text-center ${getScoreColor(
-                        player.playmaking_score
-                      )}`}
-                    >
-                      {formatScore(player.playmaking_score)}
-                    </td>
+                    {/* Dynamic category scores */}
+                    {currentCategories.map((cat) => (
+                      <td
+                        key={cat.id}
+                        className={`px-4 py-3 whitespace-nowrap text-sm text-center ${getScoreColor(
+                          player.category_scores[cat.id] || 80
+                        )}`}
+                      >
+                        {formatScore(player.category_scores[cat.id] || 80)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {players.length === 0 && (
+          {filteredAndSortedPlayers.length === 0 && (
             <div className="text-center py-8 text-slate-500">
               No players found matching the criteria.
             </div>

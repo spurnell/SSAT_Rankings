@@ -6,7 +6,7 @@ export default function RankingsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Player Rankings</h1>
         <p className="text-slate-600 mt-2">
-          NFL defensive player rankings based on z-score methodology
+          NFL player rankings based on z-score methodology
         </p>
       </div>
       <RankingsTable />

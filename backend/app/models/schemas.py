@@ -1,9 +1,63 @@
-from typing import Optional
+from typing import Optional, Dict, List, Any
 
 from pydantic import BaseModel
 
 
+class CategoryInfo(BaseModel):
+    """Information about a ranking category."""
+    id: str
+    name: str
+
+
+class PositionGroupInfo(BaseModel):
+    """Information about a position group."""
+    id: str
+    name: str
+    categories: List[CategoryInfo]
+    sub_positions: Optional[List[str]] = None
+
+
+class PlayerBase(BaseModel):
+    """Base player information."""
+    name: str
+    team: str
+    position: str
+    games_played: int
+
+
+class PlayerRanking(PlayerBase):
+    """Player ranking with dynamic category scores."""
+    id: int
+    overall_score: float
+    position_group: str = "DEF"
+    category_scores: Dict[str, float]
+
+
+class PlayerDetail(PlayerRanking):
+    """Player with detailed stats."""
+    stats: Dict[str, float]
+
+
+class CategoryWeights(BaseModel):
+    """Dynamic category weights."""
+    weights: Dict[str, float] = {}
+
+
+class RankingRequest(BaseModel):
+    """Request for rankings with optional filters."""
+    weights: Optional[Dict[str, float]] = None
+    min_games: int = 1
+    position: Optional[str] = None
+
+
+class HealthResponse(BaseModel):
+    """Health check response."""
+    status: str
+
+
+# Legacy schemas for backward compatibility
 class PlayerStats(BaseModel):
+    """Legacy defensive player stats."""
     tackles: float = 0.0
     solo_tackles: float = 0.0
     assists: float = 0.0
@@ -17,14 +71,8 @@ class PlayerStats(BaseModel):
     defensive_tds: float = 0.0
 
 
-class PlayerBase(BaseModel):
-    name: str
-    team: str
-    position: str
-    games_played: int
-
-
-class PlayerRanking(PlayerBase):
+class LegacyPlayerRanking(PlayerBase):
+    """Legacy player ranking with fixed defensive category scores."""
     id: int
     overall_score: float
     run_defense_score: float
@@ -33,22 +81,6 @@ class PlayerRanking(PlayerBase):
     playmaking_score: float
 
 
-class PlayerDetail(PlayerRanking):
+class LegacyPlayerDetail(LegacyPlayerRanking):
+    """Legacy player detail with fixed stats."""
     stats: PlayerStats
-
-
-class CategoryWeights(BaseModel):
-    run_defense: float = 0.25
-    pass_rush: float = 0.25
-    coverage: float = 0.25
-    playmaking: float = 0.25
-
-
-class RankingRequest(BaseModel):
-    weights: CategoryWeights = CategoryWeights()
-    min_games: int = 1
-    position: Optional[str] = None
-
-
-class HealthResponse(BaseModel):
-    status: str
