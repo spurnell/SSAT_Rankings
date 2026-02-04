@@ -9,12 +9,12 @@ interface RankColorResult {
  * @param rank - The player's rank (1 = best)
  * @param totalPlayers - Total number of players (unused, kept for API compatibility)
  */
-export function getRankColor(rank: number, totalPlayers: number): string {
-  const result = getRankColorWithStyle(rank, totalPlayers);
+export function getRankColor(rank: number, _totalPlayers: number): string {
+  const result = getRankColorWithStyle(rank, _totalPlayers);
   return result.className;
 }
 
-export function getRankColorWithStyle(rank: number, totalPlayers: number): RankColorResult {
+export function getRankColorWithStyle(rank: number, _totalPlayers: number): RankColorResult {
   if (rank <= 15) {
     // Rank 1-15 - Elite (green)
     return {
