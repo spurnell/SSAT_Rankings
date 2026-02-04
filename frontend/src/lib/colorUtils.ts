@@ -14,6 +14,7 @@ export function getRankColor(rank: number, _totalPlayers: number): string {
   return result.className;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function getRankColorWithStyle(rank: number, _totalPlayers: number): RankColorResult {
   if (rank <= 15) {
     // Rank 1-15 - Elite (green)
