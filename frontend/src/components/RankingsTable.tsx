@@ -3,9 +3,11 @@
 import { useState, useEffect, useMemo } from "react";
 import PlayerProfilePanel from "./PlayerProfilePanel";
 import MobileProfileSheet from "./MobileProfileSheet";
-import { fetchRankings, fetchPositionGroups, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
+import { fetchRankings, fetchCareerRankings, fetchPositionGroups, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
 
 type SortKey = string;
+
+const CAREER_POSITION_GROUPS = ["DEF", "QB", "RB", "WR", "TE", "K"];
 
 function calculateStatRanks(players: PlayerDetail[]): Map<number, Record<string, number>> {
   if (players.length === 0) return new Map();
@@ -26,10 +28,16 @@ function calculateStatRanks(players: PlayerDetail[]): Map<number, Record<string,
   return rankMap;
 }
 
-export default function RankingsTable() {
+interface RankingsTableProps {
+  mode?: "season" | "career";
+}
+
+export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
+  const isCareer = mode === "career";
+
   const [players, setPlayers] = useState<PlayerDetail[]>([]);
   const [positionGroups, setPositionGroups] = useState<PositionGroup[]>([]);
-  const [selectedPositionGroup, setSelectedPositionGroup] = useState<string>("RB");
+  const [selectedPositionGroup, setSelectedPositionGroup] = useState<string>(isCareer ? "QB" : "RB");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [positionFilter, setPositionFilter] = useState("All");
@@ -42,6 +50,10 @@ export default function RankingsTable() {
     direction: "asc" | "desc";
   } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Career-specific state
+  const [careerMode, setCareerMode] = useState<"cumulative" | "per_game">("cumulative");
+  const [minSeasons, setMinSeasons] = useState(3);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -65,41 +77,61 @@ export default function RankingsTable() {
     async function loadPositionGroups() {
       try {
         const groups = await fetchPositionGroups();
-        setPositionGroups(groups);
+        if (isCareer) {
+          setPositionGroups(groups.filter((g) => CAREER_POSITION_GROUPS.includes(g.id)));
+        } else {
+          setPositionGroups(groups);
+        }
       } catch (err) {
         console.error("Failed to load position groups:", err);
-        // Fallback to DEF only
-        setPositionGroups([{
-          id: "DEF",
-          name: "Defensive Players",
-          categories: [
-            { id: "run_defense", name: "Run Defense" },
-            { id: "pass_rush", name: "Pass Rush" },
-            { id: "coverage", name: "Coverage" },
-            { id: "playmaking", name: "Playmaking" },
-          ]
-        }]);
+        if (!isCareer) {
+          // Fallback to DEF only
+          setPositionGroups([{
+            id: "DEF",
+            name: "Defensive Players",
+            categories: [
+              { id: "run_defense", name: "Run Defense" },
+              { id: "pass_rush", name: "Pass Rush" },
+              { id: "coverage", name: "Coverage" },
+              { id: "playmaking", name: "Playmaking" },
+            ]
+          }]);
+        }
       }
     }
     loadPositionGroups();
-  }, []);
+  }, [isCareer]);
 
   // Fetch rankings when filters change
   useEffect(() => {
     async function loadRankings() {
       setLoading(true);
       try {
-        const data = await fetchRankings({
-          position_group: selectedPositionGroup,
-          position: positionFilter !== "All" ? positionFilter : undefined,
-          min_games: minGames,
-        });
+        let data: PlayerDetail[];
+        if (isCareer) {
+          data = await fetchCareerRankings({
+            position_group: selectedPositionGroup,
+            mode: careerMode,
+            min_seasons: minSeasons,
+            min_games: minGames,
+          });
+        } else {
+          data = await fetchRankings({
+            position_group: selectedPositionGroup,
+            position: positionFilter !== "All" ? positionFilter : undefined,
+            min_games: minGames,
+          });
+        }
         setPlayers(data);
         setError(null);
-        // Reset selection when position group changes
+        // Reset selection when filters change
         setSelectedPlayerIds([]);
       } catch (err) {
-        setError("Unable to load rankings. Make sure the backend is running.");
+        setError(
+          isCareer
+            ? "Unable to load career rankings. Make sure the backend is running."
+            : "Unable to load rankings. Make sure the backend is running."
+        );
         console.error(err);
       } finally {
         setLoading(false);
@@ -107,7 +139,7 @@ export default function RankingsTable() {
     }
 
     loadRankings();
-  }, [selectedPositionGroup, positionFilter, minGames]);
+  }, [selectedPositionGroup, positionFilter, minGames, isCareer, careerMode, minSeasons]);
 
   // Reset position filter when position group changes
   useEffect(() => {
@@ -273,7 +305,7 @@ export default function RankingsTable() {
             placeholder="Search by name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="block w-48 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+            className="block w-48 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
           />
         </div>
 
@@ -285,7 +317,7 @@ export default function RankingsTable() {
           <select
             value={selectedPositionGroup}
             onChange={(e) => setSelectedPositionGroup(e.target.value)}
-            className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+            className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
           >
             {positionGroups.map((group) => (
               <option key={group.id} value={group.id}>
@@ -295,8 +327,8 @@ export default function RankingsTable() {
           </select>
         </div>
 
-        {/* Sub-position filter (only for groups with sub_positions) */}
-        {currentGroup?.sub_positions && currentGroup.sub_positions.length > 0 && (
+        {/* Sub-position filter (only for season mode with groups that have sub_positions) */}
+        {!isCareer && currentGroup?.sub_positions && currentGroup.sub_positions.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Position
@@ -304,7 +336,7 @@ export default function RankingsTable() {
             <select
               value={positionFilter}
               onChange={(e) => setPositionFilter(e.target.value)}
-              className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+              className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
             >
               {currentGroup.sub_positions.map((pos) => (
                 <option key={pos} value={pos}>
@@ -315,6 +347,37 @@ export default function RankingsTable() {
           </div>
         )}
 
+        {/* Career mode toggle */}
+        {isCareer && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Mode
+            </label>
+            <div className="flex rounded-md overflow-hidden border border-slate-300">
+              <button
+                onClick={() => setCareerMode("cumulative")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  careerMode === "cumulative"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Cumulative
+              </button>
+              <button
+                onClick={() => setCareerMode("per_game")}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-slate-300 ${
+                  careerMode === "per_game"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Per Game
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">
             Team
@@ -322,7 +385,7 @@ export default function RankingsTable() {
           <select
             value={teamFilter}
             onChange={(e) => setTeamFilter(e.target.value)}
-            className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+            className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
           >
             {teams.map((team) => (
               <option key={team} value={team}>
@@ -331,17 +394,35 @@ export default function RankingsTable() {
             ))}
           </select>
         </div>
+
+        {/* Min Seasons (career only) */}
+        {isCareer && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Min Seasons
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="25"
+              value={minSeasons}
+              onChange={(e) => setMinSeasons(parseInt(e.target.value) || 1)}
+              className="block w-24 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
+            />
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">
-            Min Games Played
+            Min Games{isCareer ? "" : " Played"}
           </label>
           <input
             type="number"
             min="1"
-            max="17"
+            max={isCareer ? 400 : 17}
             value={minGames}
             onChange={(e) => setMinGames(parseInt(e.target.value) || 1)}
-            className="block w-24 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white px-3 py-2 border"
+            className="block w-24 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
           />
         </div>
       </div>
@@ -350,7 +431,9 @@ export default function RankingsTable() {
       {loading ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">Loading rankings...</p>
+          <p className="mt-4 text-slate-600">
+            {isCareer ? "Loading career rankings... (first load may take a moment)" : "Loading rankings..."}
+          </p>
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
@@ -380,12 +463,14 @@ export default function RankingsTable() {
                   >
                     Team{getSortIndicator("team")}
                   </th>
-                  <th
-                    className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
-                    onClick={() => handleSort("position")}
-                  >
-                    Pos{getSortIndicator("position")}
-                  </th>
+                  {!isCareer && (
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                      onClick={() => handleSort("position")}
+                    >
+                      Pos{getSortIndicator("position")}
+                    </th>
+                  )}
                   <th
                     className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
                     onClick={() => handleSort("games_played")}
@@ -432,9 +517,11 @@ export default function RankingsTable() {
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
                       {player.team}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
-                      {player.position}
-                    </td>
+                    {!isCareer && (
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
+                        {player.position}
+                      </td>
+                    )}
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
                       {player.games_played}
                     </td>
