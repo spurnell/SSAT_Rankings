@@ -60,6 +60,21 @@ export interface LegacyPlayerDetail extends LegacyPlayer {
   stats: PlayerStats;
 }
 
+// Detailed category info (includes weight)
+export interface CategoryDetailInfo {
+  id: string;
+  name: string;
+  weight: number;
+}
+
+// Detailed position group config (from /api/position-config endpoint)
+export interface PositionGroupDetail {
+  id: string;
+  name: string;
+  categories: CategoryDetailInfo[];
+  sub_positions: string[];
+}
+
 // Fetch position groups
 export async function fetchPositionGroups(): Promise<PositionGroup[]> {
   const response = await fetch(`${API_BASE_URL}/api/position-groups`);
@@ -136,6 +151,49 @@ export async function checkHealth(): Promise<{ status: string }> {
     throw new Error("Backend is not healthy");
   }
   return response.json();
+}
+
+// Fetch detailed position config (with weights)
+export async function fetchPositionConfig(positionGroup: string): Promise<PositionGroupDetail> {
+  const response = await fetch(`${API_BASE_URL}/api/position-config/${positionGroup}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch position config");
+  }
+  return response.json();
+}
+
+// Calculate rankings with custom weights
+export async function calculateRankings(params: {
+  position_group: string;
+  weights: Record<string, number>;
+  min_games?: number;
+  position?: string;
+  mode?: string;
+  min_seasons?: number;
+}): Promise<PlayerDetail[]> {
+  const response = await fetch(`${API_BASE_URL}/api/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to calculate rankings");
+  }
+  return response.json();
+}
+
+// Fetch career rankings
+export async function fetchCareerRankings(params: {
+  position_group: string;
+  mode?: string;
+  min_seasons?: number;
+  min_games?: number;
+}): Promise<PlayerDetail[]> {
+  // Career rankings not yet implemented on backend — fall back to season rankings
+  return fetchRankings({
+    position_group: params.position_group,
+    min_games: params.min_games,
+  });
 }
 
 // Blog API types
