@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app.models.schemas import (
     PlayerRanking,
@@ -50,6 +51,28 @@ async def get_position_groups():
         )
         for group in get_position_group_list()
     ]
+
+
+@router.get("/position-config/{position_group}")
+async def get_position_config(position_group: str):
+    """
+    Get detailed position config including category weights and sub-positions.
+    """
+    if position_group not in POSITION_GROUPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
+        )
+    group = POSITION_GROUPS[position_group]
+    return {
+        "id": group["id"],
+        "name": group["name"],
+        "categories": [
+            {"id": cat["id"], "name": cat["name"], "weight": cat["weight"]}
+            for cat in group["categories"]
+        ],
+        "sub_positions": group.get("sub_positions", []),
+    }
 
 
 @router.get("/rankings/{position_group}", response_model=List[PlayerDetail])
@@ -222,27 +245,38 @@ async def compare_players(
     return players
 
 
-@router.post("/calculate", response_model=List[PlayerRanking])
-async def calculate_rankings(
-    position_group: str = Query("DEF", description="Position group"),
-    weights: Optional[Dict[str, float]] = None,
-    min_games: int = Query(1, ge=1, le=17),
-    position: Optional[str] = Query(None),
-):
+class CalculateRequest(BaseModel):
+    """Request body for custom weight calculations."""
+    position_group: str = "DEF"
+    weights: Optional[Dict[str, float]] = None
+    min_games: int = 1
+    position: Optional[str] = None
+    mode: Optional[str] = None  # "season", "career_cumulative", "career_per_game"
+    min_seasons: Optional[int] = None
+
+
+@router.post("/calculate", response_model=List[PlayerDetail])
+async def calculate_rankings(body: CalculateRequest):
     """
     Calculate rankings with custom weights.
 
     Weights should sum to 1.0 for proper scaling.
     """
+    if body.position_group not in POSITION_GROUPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
+        )
+
     rankings = process_player_rankings(
-        min_games=min_games,
-        position_filter=position,
-        weights=weights,
-        position_group=position_group,
+        min_games=body.min_games,
+        position_filter=body.position,
+        weights=body.weights,
+        position_group=body.position_group,
     )
 
     return [
-        PlayerRanking(
+        PlayerDetail(
             id=p["id"],
             name=p["name"],
             team=p["team"],
@@ -251,6 +285,7 @@ async def calculate_rankings(
             overall_score=p["overall_score"],
             position_group=p["position_group"],
             category_scores=p["category_scores"],
+            stats=p["stats"],
         )
         for p in rankings
     ]
