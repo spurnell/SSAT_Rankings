@@ -2,6 +2,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import numpy as np
+import json
 
 from app.core.config import settings
 from app.core.ranking import (
@@ -28,6 +29,33 @@ DEFENSIVE_POSITIONS = {
 
 # Cache for fetched data by data source
 _data_cache: Dict[str, pd.DataFrame] = {}
+
+# File-based cache directory
+_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
+
+
+def _save_to_file_cache(cache_key: str, df: pd.DataFrame) -> None:
+    """Save a DataFrame to the file cache as CSV."""
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_path = _CACHE_DIR / f"{cache_key}.csv"
+        df.to_csv(cache_path, index=False)
+        print(f"Saved {len(df)} rows to file cache: {cache_path}")
+    except Exception as e:
+        print(f"Warning: Could not save to file cache: {e}")
+
+
+def _load_from_file_cache(cache_key: str) -> Optional[pd.DataFrame]:
+    """Load a DataFrame from the file cache if it exists."""
+    cache_path = _CACHE_DIR / f"{cache_key}.csv"
+    if cache_path.exists():
+        try:
+            df = pd.read_csv(cache_path)
+            print(f"Loaded {len(df)} rows from file cache: {cache_path}")
+            return df
+        except Exception as e:
+            print(f"Warning: Could not load from file cache: {e}")
+    return None
 
 
 def find_column(df: pd.DataFrame, candidates: List[str], exact_first: bool = True) -> Optional[str]:
@@ -65,10 +93,14 @@ def find_column(df: pd.DataFrame, candidates: List[str], exact_first: bool = Tru
     return None
 
 
-def clear_cache():
-    """Clear the data cache."""
+def clear_cache(include_file_cache: bool = False):
+    """Clear the data cache. Optionally also clear the file-based cache."""
     global _data_cache
     _data_cache = {}
+    if include_file_cache and _CACHE_DIR.exists():
+        for f in _CACHE_DIR.glob("*.csv"):
+            f.unlink()
+        print("File cache cleared")
 
 
 def map_position(position: str) -> str:
@@ -92,6 +124,12 @@ def fetch_defensive_stats(season: int = settings.current_season) -> pd.DataFrame
     cache_key = f"defense_{season}"
     if cache_key in _data_cache:
         return _data_cache[cache_key]
+
+    # Try file cache before fetching from network
+    file_cached = _load_from_file_cache(cache_key)
+    if file_cached is not None:
+        _data_cache[cache_key] = file_cached
+        return file_cached
 
     try:
         print(f"Fetching {season} defensive stats from Pro Football Reference...")
@@ -172,12 +210,17 @@ def fetch_defensive_stats(season: int = settings.current_season) -> pd.DataFrame
         print(f"Found {len(df)} defensive players with stats")
 
         _data_cache[cache_key] = df
+        _save_to_file_cache(cache_key, df)
         return df
 
     except Exception as e:
         print(f"Error fetching defensive data: {e}")
         import traceback
         traceback.print_exc()
+        file_cached = _load_from_file_cache(cache_key)
+        if file_cached is not None:
+            _data_cache[cache_key] = file_cached
+            return file_cached
         return _get_sample_defensive_data()
 
 
@@ -188,6 +231,12 @@ def fetch_passing_stats(season: int = settings.current_season) -> pd.DataFrame:
     cache_key = f"passing_{season}"
     if cache_key in _data_cache:
         return _data_cache[cache_key]
+
+    # Try file cache before fetching from network
+    file_cached = _load_from_file_cache(cache_key)
+    if file_cached is not None:
+        _data_cache[cache_key] = file_cached
+        return file_cached
 
     try:
         print(f"Fetching {season} passing stats from Pro Football Reference...")
@@ -289,12 +338,17 @@ def fetch_passing_stats(season: int = settings.current_season) -> pd.DataFrame:
         print(f"Found {len(df)} QBs with stats")
 
         _data_cache[cache_key] = df
+        _save_to_file_cache(cache_key, df)
         return df
 
     except Exception as e:
         print(f"Error fetching passing data: {e}")
         import traceback
         traceback.print_exc()
+        file_cached = _load_from_file_cache(cache_key)
+        if file_cached is not None:
+            _data_cache[cache_key] = file_cached
+            return file_cached
         return _get_sample_passing_data()
 
 
@@ -397,6 +451,12 @@ def fetch_rushing_stats(season: int = settings.current_season) -> pd.DataFrame:
     cache_key = f"rushing_{season}"
     if cache_key in _data_cache:
         return _data_cache[cache_key]
+
+    # Try file cache before fetching from network
+    file_cached = _load_from_file_cache(cache_key)
+    if file_cached is not None:
+        _data_cache[cache_key] = file_cached
+        return file_cached
 
     try:
         print(f"Fetching {season} rushing stats from Pro Football Reference...")
@@ -525,12 +585,17 @@ def fetch_rushing_stats(season: int = settings.current_season) -> pd.DataFrame:
         print(f"Found {len(df)} RBs with stats")
 
         _data_cache[cache_key] = df
+        _save_to_file_cache(cache_key, df)
         return df
 
     except Exception as e:
         print(f"Error fetching rushing data: {e}")
         import traceback
         traceback.print_exc()
+        file_cached = _load_from_file_cache(cache_key)
+        if file_cached is not None:
+            _data_cache[cache_key] = file_cached
+            return file_cached
         return _get_sample_rushing_data()
 
 
@@ -546,6 +611,17 @@ def fetch_receiving_stats(season: int = settings.current_season, position_filter
             if len(filtered) > 0:
                 return filtered
             print(f"Warning: No players found for position {position_filter} in cache, returning all receivers")
+        return df
+
+    # Try file cache before fetching from network
+    file_cached = _load_from_file_cache(cache_key)
+    if file_cached is not None:
+        _data_cache[cache_key] = file_cached
+        df = file_cached.copy()
+        if position_filter:
+            filtered = df[df['position'].str.upper() == position_filter.upper()]
+            if len(filtered) > 0:
+                return filtered
         return df
 
     try:
@@ -701,6 +777,7 @@ def fetch_receiving_stats(season: int = settings.current_season, position_filter
         print(f"Found {len(df)} receivers with stats")
 
         _data_cache[cache_key] = df
+        _save_to_file_cache(cache_key, df)
 
         # Apply position filter if specified
         if position_filter:
@@ -716,6 +793,15 @@ def fetch_receiving_stats(season: int = settings.current_season, position_filter
         print(f"Error fetching receiving data: {e}")
         import traceback
         traceback.print_exc()
+        file_cached = _load_from_file_cache(cache_key)
+        if file_cached is not None:
+            _data_cache[cache_key] = file_cached
+            df = file_cached.copy()
+            if position_filter:
+                filtered = df[df['position'].str.upper() == position_filter.upper()]
+                if len(filtered) > 0:
+                    return filtered
+            return df
         return _get_sample_receiving_data(position_filter)
 
 
@@ -726,6 +812,12 @@ def fetch_kicking_stats(season: int = settings.current_season) -> pd.DataFrame:
     cache_key = f"kicking_{season}"
     if cache_key in _data_cache:
         return _data_cache[cache_key]
+
+    # Try file cache before fetching from network
+    file_cached = _load_from_file_cache(cache_key)
+    if file_cached is not None:
+        _data_cache[cache_key] = file_cached
+        return file_cached
 
     try:
         print(f"Fetching {season} kicking stats from Pro Football Reference...")
@@ -855,12 +947,17 @@ def fetch_kicking_stats(season: int = settings.current_season) -> pd.DataFrame:
         print(f"Found {len(df)} kickers with stats")
 
         _data_cache[cache_key] = df
+        _save_to_file_cache(cache_key, df)
         return df
 
     except Exception as e:
         print(f"Error fetching kicking data: {e}")
         import traceback
         traceback.print_exc()
+        file_cached = _load_from_file_cache(cache_key)
+        if file_cached is not None:
+            _data_cache[cache_key] = file_cached
+            return file_cached
         return _get_sample_kicking_data()
 
 
