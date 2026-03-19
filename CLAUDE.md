@@ -29,7 +29,7 @@ NFL Player Rankings website using z-score methodology to evaluate players across
 - **Frontend**: Next.js 14 with App Router, TypeScript, Tailwind CSS, Recharts
 - **Backend**: Python FastAPI with Pydantic models, SQLAlchemy, SQLite
 - **Auth**: Clerk (frontend provider + backend JWT validation via JWKS)
-- **Data Source**: nfl-data-py library (regular season weeks 1-18 only)
+- **Data Source**: nflreadpy library (weekly player stats, regular season weeks 1-18)
 - **Blog Generation**: Claude API via Anthropic SDK for AI-generated content
 
 ## Development Commands
@@ -98,10 +98,11 @@ Single source of truth for all position groups. Defines:
 ### Data Flow
 
 **NFL Season Rankings:**
-1. `nfl_data.py` fetches play-by-play data → aggregates to player stats
-2. `ranking.py` computes z-scores and category scores per position group
-3. `rankings.py` API routes expose `/api/rankings/{position_group}`
-4. Frontend fetches via `lib/api.ts` → displays in `RankingsTable.tsx`
+1. `nflverse_ingest.py` fetches weekly stats via `nflreadpy.load_player_stats()` → aggregates to seasonal totals in SQLite
+2. `nfl_data_db.py` reads from SQLite, computes derived stats (passer rating, yards/attempt, etc.)
+3. `ranking.py` computes z-scores and category scores per position group
+4. `rankings.py` API routes expose `/api/rankings/{position_group}`
+5. Frontend fetches via `lib/api.ts` → displays in `RankingsTable.tsx`
 
 **Career Rankings:**
 1. `career_data.py` fetches historical data → cumulative totals or per-game averages

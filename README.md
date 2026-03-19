@@ -59,4 +59,4 @@ Scores are normalized to a 60-100 scale where 80 represents average.
 
 - **Frontend**: Next.js 14, TypeScript, Tailwind CSS
 - **Backend**: Python 3.10+, FastAPI, Pydantic
-- **Data**: nfl-data-py for NFL statistics
+- **Data**: nflreadpy for NFL statistics (nflverse data)
