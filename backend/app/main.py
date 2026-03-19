@@ -29,6 +29,25 @@ async def startup_event():
     init_db()
     init_rankings_db()
 
+    # Auto-ingest data if rankings database is empty (e.g., first deploy to new PG)
+    from app.db.database import RankingsSessionLocal
+    from app.db.stats_models import PlayerSeasonStats
+    session = RankingsSessionLocal()
+    try:
+        count = session.query(PlayerSeasonStats).count()
+        if count == 0:
+            import logging
+            logger = logging.getLogger("uvicorn")
+            logger.info("Empty rankings database detected — running data ingestion...")
+            from app.services.nflverse_ingest import refresh_all
+            refresh_all(settings.current_season)
+            logger.info("Data ingestion complete.")
+    except Exception as e:
+        import logging
+        logging.getLogger("uvicorn").error(f"Auto-ingestion failed: {e}")
+    finally:
+        session.close()
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():

@@ -2,21 +2,34 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pathlib import Path
 
-# Database file location
-DB_DIR = Path(__file__).parent.parent.parent / "data"
-DB_DIR.mkdir(exist_ok=True)
+from app.core.config import settings
 
-# --- Blog database (existing) ---
-DATABASE_URL = f"sqlite:///{DB_DIR}/blog.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
-# --- Rankings database (player stats) ---
-RANKINGS_DB_URL = f"sqlite:///{DB_DIR}/rankings.db"
-rankings_engine = create_engine(RANKINGS_DB_URL, connect_args={"check_same_thread": False})
-RankingsSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=rankings_engine)
 RankingsBase = declarative_base()
+
+
+def _make_engine(url: str):
+    """Create engine with appropriate args for SQLite vs PostgreSQL."""
+    connect_args = {}
+    if url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+    return create_engine(url, connect_args=connect_args)
+
+
+# Detect if using PostgreSQL (single DB) or SQLite (two files)
+if settings.database_url.startswith("postgresql"):
+    # Production: single PostgreSQL database for everything
+    engine = _make_engine(settings.database_url)
+    rankings_engine = engine
+else:
+    # Local dev: two separate SQLite files
+    DB_DIR = Path(__file__).parent.parent.parent / "data"
+    DB_DIR.mkdir(exist_ok=True)
+    engine = _make_engine(f"sqlite:///{DB_DIR}/blog.db")
+    rankings_engine = _make_engine(f"sqlite:///{DB_DIR}/rankings.db")
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+RankingsSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=rankings_engine)
 
 
 def get_db():
