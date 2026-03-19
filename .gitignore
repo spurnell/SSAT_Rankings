@@ -5,4 +5,4 @@ venv/
 *.db
 node_modules/
 .next/
-backend/data/cache/
+# Don't ignore backend/data/cache/ - seed data needs to be committed
