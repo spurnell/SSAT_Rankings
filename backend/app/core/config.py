@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         "https://www.sportssatrankings.com",
     ]
     anthropic_api_key: Optional[str] = None
-    current_season: int = 2024
+    current_season: int = 2025
 
     class Config:
         env_file = ".env"
