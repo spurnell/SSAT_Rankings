@@ -9,7 +9,6 @@ Uses nflreadpy.load_player_stats() which provides weekly stats for ALL position 
 """
 
 import nflreadpy as nflr
-import nfl_data_py as nfl
 import pandas as pd
 import numpy as np
 from datetime import datetime
