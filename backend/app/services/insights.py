@@ -3,7 +3,7 @@ Insights analyzer for NFL player rankings.
 Detects interesting patterns and generates insights for blog posts.
 """
 from typing import Any
-from app.services.nfl_data import process_player_rankings, DEFENSIVE_POSITIONS
+from app.services.nfl_data_db import process_player_rankings, DEFENSIVE_POSITIONS
 from app.core.position_config import POSITION_GROUPS, get_categories_for_group
 
 

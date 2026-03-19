@@ -11,7 +11,7 @@ from app.models.schemas import (
     LegacyPlayerDetail,
     PlayerStats,
 )
-from app.services.nfl_data import process_player_rankings
+from app.services.nfl_data_db import process_player_rankings
 from app.core.position_config import get_position_group_list, POSITION_GROUPS
 
 router = APIRouter()

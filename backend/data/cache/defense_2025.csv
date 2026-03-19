@@ -1,0 +1,71 @@
+player_name,team,position,games_played,tackles,solo_tackles,assists,sacks,qb_hits,tackles_for_loss,passes_defended,interceptions,forced_fumbles,fumble_recoveries,defensive_tds,player_id
+Myles Garrett,CLE,DE,17,52,38,14,14.0,28,18,4,0,4,1,0,1
+T.J. Watt,PIT,OLB,17,60,42,18,13.5,26,19,5,1,5,2,1,2
+Micah Parsons,DAL,OLB,16,55,39,16,13.0,25,17,3,0,3,1,0,3
+Nick Bosa,SF,DE,17,48,35,13,12.5,27,16,3,0,3,2,0,4
+Maxx Crosby,LV,DE,17,67,46,21,11.0,24,20,5,0,4,1,0,5
+Trey Hendrickson,CIN,DE,17,50,36,14,14.5,29,17,2,0,5,1,1,6
+Josh Hines-Allen,JAX,OLB,17,58,40,18,11.5,22,16,4,1,3,0,0,7
+Danielle Hunter,HOU,DE,16,45,33,12,10.5,21,14,2,0,2,1,0,8
+Khalil Mack,LAC,OLB,15,42,30,12,9.0,18,13,2,0,3,1,0,9
+Will Anderson Jr.,HOU,DE,17,56,40,16,12.0,23,18,3,0,4,2,1,10
+Rashan Gary,GB,OLB,17,53,37,16,10.0,20,15,3,0,2,0,0,11
+Aidan Hutchinson,DET,DE,9,28,20,8,7.5,14,9,1,0,2,1,0,12
+Chris Jones,KC,DT,17,45,30,15,10.5,22,14,3,0,2,1,0,13
+Quinnen Williams,NYJ,DT,17,50,33,17,9.0,19,15,4,0,1,0,0,14
+Dexter Lawrence,NYG,DT,17,58,38,20,8.5,20,13,2,0,2,1,0,15
+Jalen Carter,PHI,DT,17,47,31,16,7.5,18,12,3,0,1,1,0,16
+Cameron Heyward,PIT,DT,16,54,35,19,6.0,15,10,4,0,1,0,0,17
+Javon Hargrave,SF,DT,15,38,25,13,6.5,14,9,1,0,1,1,0,18
+Vita Vea,TB,NT,17,40,24,16,4.5,12,8,1,0,1,0,0,19
+Grady Jarrett,ATL,DT,16,46,30,16,5.5,13,11,2,0,2,1,0,20
+Fred Warner,SF,ILB,17,130,85,45,3.0,8,12,9,3,1,1,1,21
+Roquan Smith,BAL,ILB,17,141,92,49,4.0,9,14,7,2,2,1,0,22
+Lavonte David,TB,ILB,16,105,68,37,2.5,6,10,5,1,1,0,0,23
+Foyesade Oluokun,JAX,ILB,17,148,95,53,2.0,5,8,6,2,1,1,0,24
+Bobby Wagner,WAS,ILB,17,136,88,48,3.5,7,11,5,2,2,0,1,25
+Tremaine Edmunds,CHI,ILB,16,118,76,42,2.0,6,9,4,1,0,1,0,26
+Zack Baun,PHI,ILB,17,144,96,48,3.5,8,13,8,3,2,1,1,27
+Patrick Queen,PIT,ILB,17,120,78,42,3.0,7,10,6,2,1,0,0,28
+Demario Davis,NO,ILB,17,110,72,38,3.5,8,11,5,1,1,1,0,29
+Frankie Luvu,WAS,OLB,17,95,62,33,7.5,15,13,4,1,3,1,0,30
+Sauce Gardner,NYJ,CB,17,58,48,10,0.5,2,3,17,5,1,0,1,31
+Pat Surtain II,DEN,CB,17,52,44,8,0.0,1,2,18,6,0,1,2,32
+Derek Stingley Jr.,HOU,CB,16,50,42,8,1.0,3,4,15,4,1,0,1,33
+Devon Witherspoon,SEA,CB,16,62,52,10,2.0,4,5,14,4,2,1,1,34
+DaRon Bland,DAL,CB,14,40,34,6,0.0,1,2,13,5,0,0,2,35
+Jaylon Johnson,CHI,CB,17,55,46,9,0.5,2,3,16,4,1,0,0,36
+Trent McDuffie,KC,CB,17,60,50,10,1.0,3,3,14,3,0,1,0,37
+Tariq Woolen,SEA,CB,17,48,40,8,0.0,1,2,12,4,1,0,1,38
+Christian Gonzalez,NE,CB,16,54,45,9,0.5,2,3,15,5,0,0,1,39
+Jaire Alexander,GB,CB,14,42,35,7,0.5,1,2,11,3,1,0,0,40
+Jessie Bates III,ATL,FS,17,98,70,28,1.5,4,5,10,5,1,1,1,41
+Derwin James,LAC,SS,17,105,72,33,3.0,7,8,8,3,2,1,0,42
+Kyle Hamilton,BAL,SS,17,100,68,32,3.5,8,9,11,4,2,1,1,43
+Minkah Fitzpatrick,PIT,FS,17,82,58,24,1.0,3,4,9,4,0,1,0,44
+Antoine Winfield Jr.,TB,SS,17,95,66,29,3.0,7,7,9,3,2,2,1,45
+Xavier McKinney,GB,FS,17,88,62,26,1.5,4,5,10,5,1,0,1,46
+Budda Baker,ARI,SS,17,112,76,36,2.0,5,7,7,2,1,1,0,47
+Jordan Poyer,MIA,FS,16,75,52,23,1.0,3,4,8,3,0,0,0,48
+Jevon Holland,MIA,FS,17,80,56,24,2.0,5,5,9,4,1,1,1,49
+Chamarri Conner,TEN,SS,17,90,62,28,2.5,6,6,7,2,1,0,0,50
+Za'Darius Smith,CLE,DE,16,44,32,12,8.0,17,12,2,0,2,0,0,51
+Brian Burns,NYG,DE,17,50,36,14,9.5,19,14,3,0,3,1,0,52
+Calais Campbell,MIA,DE,16,42,28,14,5.5,12,9,3,0,1,2,0,53
+Jonathan Greenard,MIN,DE,17,48,34,14,11.0,21,15,2,0,3,0,0,54
+Jermaine Johnson,NYJ,DE,15,40,29,11,7.0,15,10,2,0,2,1,0,55
+Harold Landry,TEN,OLB,17,52,36,16,9.5,18,13,3,0,2,0,0,56
+Matthew Judon,ATL,OLB,16,46,33,13,8.0,16,11,2,0,2,1,0,57
+Daron Payne,WAS,DT,17,56,36,20,6.0,14,10,2,0,1,0,0,58
+Justin Madubuike,BAL,DT,17,48,32,16,7.0,16,11,3,0,2,1,0,59
+Leonard Williams,SEA,DT,17,50,33,17,6.5,14,10,2,0,1,1,0,60
+Christian Wilkins,LV,DT,17,52,34,18,5.5,13,9,2,0,1,0,0,61
+Derrick Brown,CAR,DT,10,30,20,10,4.0,9,6,1,0,1,0,0,62
+Jerome Baker,TEN,ILB,17,115,74,41,2.5,6,8,5,1,1,0,0,63
+Jordyn Brooks,MIA,ILB,17,125,82,43,2.0,5,7,4,1,0,1,0,64
+Quay Walker,GB,ILB,17,108,70,38,2.5,6,9,5,2,1,0,0,65
+Alex Highsmith,PIT,OLB,16,48,34,14,8.5,17,12,3,0,3,1,0,66
+Cam Thomas,LAC,DE,17,46,33,13,10.0,20,14,2,0,3,0,0,67
+Denico Autry,TEN,DE,16,38,27,11,7.5,15,10,2,0,2,1,0,68
+L'Jarius Sneed,TEN,CB,17,65,54,11,1.0,3,4,13,3,1,0,0,69
+Neville Hewitt,HOU,ILB,14,72,46,26,1.0,3,5,3,0,0,0,0,70
