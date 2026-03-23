@@ -83,10 +83,10 @@ def fetch_stats_for_position_group(
                s.completions, s.attempts, s.passing_yards, s.passing_tds,
                s.interceptions, s.sacks, s.sack_yards, s.passing_first_downs,
                s.sack_fumbles, s.carries, s.rushing_yards, s.rushing_tds,
-               s.rushing_first_downs, s.rushing_fumbles,
+               s.rushing_first_downs, s.rushing_fumbles, s.longest_rush,
                s.receptions, s.targets, s.receiving_yards, s.receiving_tds,
                s.receiving_fumbles, s.receiving_first_downs,
-               s.receiving_yards_after_catch,
+               s.receiving_yards_after_catch, s.longest_reception,
                s.tackles, s.solo_tackles, s.assists, s.def_sacks,
                s.qb_hits, s.tackles_for_loss, s.passes_defended,
                s.def_interceptions, s.forced_fumbles, s.fumble_recoveries,
@@ -200,7 +200,7 @@ def _prepare_rb_stats(df: pd.DataFrame) -> pd.DataFrame:
     df["rush_tds"] = df["rushing_tds"]
     df["first_downs"] = df["rushing_first_downs"]
     df["fumbles"] = df["rushing_fumbles"].fillna(0)
-    df["longest_rush"] = 0  # Not available from nflverse seasonal data
+    df["longest_rush"] = df["longest_rush"].fillna(0) if "longest_rush" in df.columns else 0
     df["rec_yards"] = df["receiving_yards"]
     df["rec_tds"] = df["receiving_tds"]
     # receptions, targets already named correctly
@@ -235,7 +235,7 @@ def _prepare_receiving_stats(df: pd.DataFrame, position_group: str) -> pd.DataFr
     df["first_downs"] = df["receiving_first_downs"]
     df["fumbles"] = df["receiving_fumbles"].fillna(0)
     df["yards_after_catch"] = df["receiving_yards_after_catch"]
-    df["longest_rec"] = 0  # Not available from nflverse seasonal data
+    df["longest_rec"] = df["longest_reception"].fillna(0) if "longest_reception" in df.columns else 0
     # receptions, targets already named correctly
 
     # Derived stats

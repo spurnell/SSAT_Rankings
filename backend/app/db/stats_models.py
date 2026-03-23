@@ -54,6 +54,7 @@ class PlayerSeasonStats(RankingsBase):
     rushing_tds = Column(Float, default=0)
     rushing_first_downs = Column(Float, default=0)
     rushing_fumbles = Column(Float, default=0)
+    longest_rush = Column(Float, default=0)
 
     # --- Receiving stats (WR, TE, RB) ---
     receptions = Column(Float, default=0)
@@ -63,6 +64,7 @@ class PlayerSeasonStats(RankingsBase):
     receiving_fumbles = Column(Float, default=0)
     receiving_first_downs = Column(Float, default=0)
     receiving_yards_after_catch = Column(Float, default=0)
+    longest_reception = Column(Float, default=0)
 
     # --- Defensive stats (DEF, from PBP aggregation) ---
     tackles = Column(Float, default=0)

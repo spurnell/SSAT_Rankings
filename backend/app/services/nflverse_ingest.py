@@ -270,6 +270,40 @@ def _aggregate_defensive_stats(pbp: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _aggregate_longest_plays(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Extract longest rush and longest reception per player per season from PBP."""
+    frames = []
+
+    # Longest rush
+    if "rusher_player_id" in pbp.columns:
+        rushes = pbp[(pbp["play_type"] == "run") & (pbp["rusher_player_id"].notna())][
+            ["rusher_player_id", "season", "rushing_yards"]
+        ].copy()
+        rushes = rushes.rename(columns={"rusher_player_id": "player_id"})
+        rushes["rushing_yards"] = pd.to_numeric(rushes["rushing_yards"], errors="coerce").fillna(0)
+        longest_rush = rushes.groupby(["player_id", "season"])["rushing_yards"].max().reset_index(name="longest_rush")
+        frames.append(longest_rush)
+
+    # Longest reception
+    if "receiver_player_id" in pbp.columns:
+        recs = pbp[(pbp["play_type"] == "pass") & (pbp["complete_pass"] == 1) & (pbp["receiver_player_id"].notna())][
+            ["receiver_player_id", "season", "yards_gained"]
+        ].copy()
+        recs = recs.rename(columns={"receiver_player_id": "player_id"})
+        recs["yards_gained"] = pd.to_numeric(recs["yards_gained"], errors="coerce").fillna(0)
+        longest_rec = recs.groupby(["player_id", "season"])["yards_gained"].max().reset_index(name="longest_reception")
+        frames.append(longest_rec)
+
+    if not frames:
+        return pd.DataFrame(columns=["player_id", "season"])
+
+    result = frames[0]
+    for df in frames[1:]:
+        result = result.merge(df, on=["player_id", "season"], how="outer")
+    result = result.fillna(0)
+    return result
+
+
 def _aggregate_offensive_stats(pbp: pd.DataFrame) -> pd.DataFrame:
     """Aggregate play-by-play data into per-player offensive season stats.
 
@@ -467,6 +501,10 @@ def ingest_all_stats(seasons: list[int]):
             offensive = _aggregate_offensive_stats(pbp)
             print(f"  Got {len(offensive)} offensive player-season rows from PBP.")
 
+        # Extract longest rush and longest reception from PBP
+        print("Extracting longest rush/reception from PBP...")
+        longest_plays = _aggregate_longest_plays(pbp)
+
         print("Aggregating defensive stats from PBP...")
         defensive = _aggregate_defensive_stats(pbp)
         print(f"  Got {len(defensive)} defensive player-season rows.")
@@ -536,7 +574,27 @@ def ingest_all_stats(seasons: list[int]):
             existing.updated_at = datetime.utcnow()
             count += 1
 
-        # Flush offensive stats so defensive/kicking loops can find existing records
+        # Flush offensive stats so subsequent loops can find existing records
+        session.flush()
+
+        # Write longest rush/reception from PBP
+        for _, row in longest_plays.iterrows():
+            pid = row.get("player_id")
+            if not pid or (isinstance(pid, float) and pd.isna(pid)):
+                continue
+            season_val = int(row["season"])
+
+            existing = session.query(PlayerSeasonStats).filter_by(
+                gsis_id=pid, season=season_val
+            ).first()
+            if not existing:
+                continue
+
+            if "longest_rush" in row and row["longest_rush"] > 0:
+                existing.longest_rush = float(row["longest_rush"])
+            if "longest_reception" in row and row["longest_reception"] > 0:
+                existing.longest_reception = float(row["longest_reception"])
+
         session.flush()
 
         # Process defensive stats
