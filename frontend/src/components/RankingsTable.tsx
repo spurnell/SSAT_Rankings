@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import PlayerProfilePanel from "./PlayerProfilePanel";
 import MobileProfileSheet from "./MobileProfileSheet";
-import { fetchRankings, fetchCareerRankings, fetchPositionGroups, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
+import { fetchRankings, fetchCareerRankings, fetchPositionGroups, fetchAvailableSeasons, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
 
 type SortKey = string;
 
@@ -45,6 +45,8 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
   const [minGames, setMinGames] = useState(1);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [availableSeasons, setAvailableSeasons] = useState<number[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: "asc" | "desc";
@@ -102,6 +104,23 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
     loadPositionGroups();
   }, [isCareer]);
 
+  // Fetch available seasons on mount (season mode only)
+  useEffect(() => {
+    if (isCareer) return;
+    async function loadSeasons() {
+      try {
+        const seasons = await fetchAvailableSeasons();
+        setAvailableSeasons(seasons);
+        if (seasons.length > 0 && selectedSeason === null) {
+          setSelectedSeason(seasons[0]); // Most recent season (descending)
+        }
+      } catch (err) {
+        console.error("Failed to load available seasons:", err);
+      }
+    }
+    loadSeasons();
+  }, [isCareer]);
+
   // Fetch rankings when filters change
   useEffect(() => {
     async function loadRankings() {
@@ -120,6 +139,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
             position_group: selectedPositionGroup,
             position: positionFilter !== "All" ? positionFilter : undefined,
             min_games: minGames,
+            season: selectedSeason || undefined,
           });
         }
         setPlayers(data);
@@ -139,7 +159,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
     }
 
     loadRankings();
-  }, [selectedPositionGroup, positionFilter, minGames, isCareer, careerMode, minSeasons]);
+  }, [selectedPositionGroup, positionFilter, minGames, isCareer, careerMode, minSeasons, selectedSeason]);
 
   // Reset position filter when position group changes
   useEffect(() => {
@@ -326,6 +346,26 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
             ))}
           </select>
         </div>
+
+        {/* Season Selector (season mode only) */}
+        {!isCareer && availableSeasons.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Season
+            </label>
+            <select
+              value={selectedSeason || ""}
+              onChange={(e) => setSelectedSeason(Number(e.target.value))}
+              className="block w-32 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
+            >
+              {availableSeasons.map((season) => (
+                <option key={season} value={season}>
+                  {season}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Sub-position filter (only for season mode with groups that have sub_positions) */}
         {!isCareer && currentGroup?.sub_positions && currentGroup.sub_positions.length > 0 && (

@@ -11,7 +11,7 @@ from app.models.schemas import (
     LegacyPlayerDetail,
     PlayerStats,
 )
-from app.services.nfl_data_db import process_player_rankings
+from app.services.nfl_data_db import process_player_rankings, get_available_seasons
 from app.core.position_config import get_position_group_list, POSITION_GROUPS
 
 router = APIRouter()
@@ -75,11 +75,18 @@ async def get_position_config(position_group: str):
     }
 
 
+@router.get("/available-seasons")
+async def available_seasons():
+    """Get list of seasons that have data in the database."""
+    return get_available_seasons()
+
+
 @router.get("/rankings/{position_group}", response_model=List[PlayerDetail])
 async def get_rankings_by_group(
     position_group: str,
     position: Optional[str] = Query(None, description="Filter by sub-position (for DEF group)"),
     min_games: int = Query(1, ge=1, le=17, description="Minimum games played"),
+    season: Optional[int] = Query(None, description="Season year (default: current season)"),
 ):
     """
     Get ranked list of players for a specific position group.
@@ -96,6 +103,7 @@ async def get_rankings_by_group(
         min_games=min_games,
         position_filter=position,
         position_group=position_group,
+        season=season,
     )
 
     return [

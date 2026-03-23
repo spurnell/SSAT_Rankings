@@ -8,6 +8,7 @@ ranking engine. Replaces the PFR scraping in nfl_data.py.
 import pandas as pd
 import numpy as np
 from typing import Any, Dict, List, Optional, Set
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.ranking import (
@@ -100,7 +101,8 @@ def fetch_stats_for_position_group(
     """
     params = {"season": season, "pos_group": position_group}
 
-    df = pd.read_sql(query, rankings_engine, params=params)
+    with rankings_engine.connect() as conn:
+        df = pd.read_sql(text(query), conn, params=params)
 
     if df.empty:
         return pd.DataFrame()
@@ -302,12 +304,22 @@ def _prepare_kicking_stats(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def get_available_seasons() -> List[int]:
+    """Return list of seasons with data, descending."""
+    with rankings_engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT DISTINCT season FROM player_season_stats ORDER BY season DESC")
+        )
+        return [row[0] for row in result]
+
+
 def process_player_rankings(
     data: Optional[pd.DataFrame] = None,
     min_games: int = 1,
     position_filter: Optional[str] = None,
     weights: Optional[Dict[str, float]] = None,
     position_group: str = "DEF",
+    season: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     Process player data and calculate rankings for any position group.
@@ -319,7 +331,7 @@ def process_player_rankings(
     log_scale_stats = get_log_scale_stats(position_group)
 
     if data is None:
-        data = fetch_stats_for_position_group(position_group)
+        data = fetch_stats_for_position_group(position_group, season=season)
 
     if data.empty:
         return []

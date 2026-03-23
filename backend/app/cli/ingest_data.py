@@ -4,6 +4,7 @@ CLI command for ingesting NFL data from nflverse into SQLite.
 Usage:
   python -m app.cli.ingest_data refresh              # Current season
   python -m app.cli.ingest_data refresh --season 2024 # Specific season
+  python -m app.cli.ingest_data refresh-all           # All seasons 1999-2025
   python -m app.cli.ingest_data status                # Show ingestion status
 """
 
@@ -20,6 +21,12 @@ def cmd_refresh(args):
     from app.services.nflverse_ingest import refresh_all
     season = args.season or settings.current_season
     refresh_all(season)
+
+
+def cmd_refresh_all(args):
+    """Ingest all historical seasons."""
+    from app.services.nflverse_ingest import refresh_all_seasons
+    refresh_all_seasons(args.start, args.end)
 
 
 def cmd_status(args):
@@ -77,6 +84,12 @@ def main():
     refresh_parser = subparsers.add_parser("refresh", help="Refresh data from nflverse")
     refresh_parser.add_argument("--season", type=int, help="Season year (default: current)")
     refresh_parser.set_defaults(func=cmd_refresh)
+
+    # refresh-all command
+    refresh_all_parser = subparsers.add_parser("refresh-all", help="Ingest all seasons (1999-2025)")
+    refresh_all_parser.add_argument("--start", type=int, default=1999, help="Start year (default: 1999)")
+    refresh_all_parser.add_argument("--end", type=int, default=2025, help="End year (default: 2025)")
+    refresh_all_parser.set_defaults(func=cmd_refresh_all)
 
     # status command
     status_parser = subparsers.add_parser("status", help="Show ingestion status")

@@ -84,11 +84,21 @@ export async function fetchPositionGroups(): Promise<PositionGroup[]> {
   return response.json();
 }
 
+// Fetch available seasons
+export async function fetchAvailableSeasons(): Promise<number[]> {
+  const response = await fetch(`${API_BASE_URL}/api/available-seasons`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch available seasons");
+  }
+  return response.json();
+}
+
 // Fetch rankings for a specific position group
 export async function fetchRankings(params?: {
   position_group?: string;
   position?: string;
   min_games?: number;
+  season?: number;
 }): Promise<PlayerDetail[]> {
   const searchParams = new URLSearchParams();
   if (params?.position && params.position !== "All") {
@@ -96,6 +106,9 @@ export async function fetchRankings(params?: {
   }
   if (params?.min_games) {
     searchParams.append("min_games", params.min_games.toString());
+  }
+  if (params?.season) {
+    searchParams.append("season", params.season.toString());
   }
 
   const positionGroup = params?.position_group || "DEF";

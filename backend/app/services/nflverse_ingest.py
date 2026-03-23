@@ -1,19 +1,19 @@
 """
-nflverse data ingestion service.
+NFL data ingestion service.
 
-Fetches NFL data from nflreadpy (nflverse) and writes to the rankings SQLite database.
+Fetches NFL data from nfl_data_py and writes to the rankings SQLite database.
 Called via CLI command, not on every API request.
 
-Uses nflreadpy.load_player_stats() which provides weekly stats for ALL position groups
-(offense, defense, kicking) in a single call. We aggregate to seasonal totals.
+Uses:
+- nfl.import_players() for player roster
+- nfl.import_seasonal_data() for offensive stats (passing, rushing, receiving)
+- nfl.import_pbp_data() for defensive and kicking stats (aggregated from play-by-play)
 """
 
-import nflreadpy as nflr
 import nfl_data_py as nfl
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from sqlalchemy import text
 
 from app.db.database import RankingsSessionLocal, init_rankings_db
 from app.db.stats_models import Player, PlayerSeasonStats, IngestionLog
@@ -33,13 +33,6 @@ POSITION_TO_GROUP = {
     "TE": "TE",
     # Special teams
     "K": "K",
-}
-
-# nflreadpy position_group values -> our position groups
-NFLREADPY_GROUP_MAP = {
-    "DB": "DEF", "DL": "DEF", "LB": "DEF",
-    "QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE",
-    # K has position_group "SPEC" in nflreadpy, handled via position column
 }
 
 
@@ -112,152 +105,415 @@ def ingest_players():
         session.close()
 
 
+def _aggregate_defensive_stats(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate play-by-play data into per-player defensive season stats."""
+    frames = {}
+
+    # Solo tackles
+    solo_dfs = []
+    for col in ["solo_tackle_1_player_id", "solo_tackle_2_player_id"]:
+        if col in pbp.columns:
+            df = pbp[[col, "season", "game_id"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            solo_dfs.append(df)
+    if solo_dfs:
+        solo = pd.concat(solo_dfs)
+        frames["solo_tackles"] = solo.groupby(["player_id", "season"]).size().reset_index(name="solo_tackles")
+
+    # Assist tackles
+    assist_dfs = []
+    for i in range(1, 5):
+        col = f"assist_tackle_{i}_player_id"
+        if col in pbp.columns:
+            df = pbp[[col, "season", "game_id"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            assist_dfs.append(df)
+    if assist_dfs:
+        assists = pd.concat(assist_dfs)
+        frames["assists"] = assists.groupby(["player_id", "season"]).size().reset_index(name="assists")
+
+    # Sacks: full sacks (1.0) + half sacks (0.5)
+    sack_dfs = []
+    if "sack_player_id" in pbp.columns:
+        full_sacks = pbp[pbp["sack"] == 1][["sack_player_id", "season", "game_id"]].rename(
+            columns={"sack_player_id": "player_id"}
+        ).dropna(subset=["player_id"])
+        full_sacks["sack_value"] = 1.0
+        sack_dfs.append(full_sacks[["player_id", "season", "sack_value"]])
+    for col in ["half_sack_1_player_id", "half_sack_2_player_id"]:
+        if col in pbp.columns:
+            half = pbp[pbp["sack"] == 1][[col, "season"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            half["sack_value"] = 0.5
+            sack_dfs.append(half[["player_id", "season", "sack_value"]])
+    if sack_dfs:
+        sacks = pd.concat(sack_dfs)
+        frames["def_sacks"] = sacks.groupby(["player_id", "season"])["sack_value"].sum().reset_index(name="def_sacks")
+
+    # QB hits
+    qbhit_dfs = []
+    for col in ["qb_hit_1_player_id", "qb_hit_2_player_id"]:
+        if col in pbp.columns:
+            df = pbp[pbp["qb_hit"] == 1][[col, "season"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            qbhit_dfs.append(df)
+    if qbhit_dfs:
+        qbhits = pd.concat(qbhit_dfs)
+        frames["qb_hits"] = qbhits.groupby(["player_id", "season"]).size().reset_index(name="qb_hits")
+
+    # Tackles for loss
+    tfl_dfs = []
+    for col in ["tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id"]:
+        if col in pbp.columns:
+            df = pbp[pbp["tackled_for_loss"] == 1][[col, "season"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            tfl_dfs.append(df)
+    if tfl_dfs:
+        tfl = pd.concat(tfl_dfs)
+        frames["tackles_for_loss"] = tfl.groupby(["player_id", "season"]).size().reset_index(name="tackles_for_loss")
+
+    # Passes defended
+    pd_dfs = []
+    for col in ["pass_defense_1_player_id", "pass_defense_2_player_id"]:
+        if col in pbp.columns:
+            df = pbp[[col, "season"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            pd_dfs.append(df)
+    if pd_dfs:
+        passes_def = pd.concat(pd_dfs)
+        frames["passes_defended"] = passes_def.groupby(["player_id", "season"]).size().reset_index(name="passes_defended")
+
+    # Interceptions
+    if "interception_player_id" in pbp.columns:
+        ints = pbp[pbp["interception"] == 1][["interception_player_id", "season"]].rename(
+            columns={"interception_player_id": "player_id"}
+        ).dropna(subset=["player_id"])
+        frames["def_interceptions"] = ints.groupby(["player_id", "season"]).size().reset_index(name="def_interceptions")
+
+    # Forced fumbles
+    ff_dfs = []
+    for col in ["forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id"]:
+        if col in pbp.columns:
+            df = pbp[pbp["fumble_forced"] == 1][[col, "season"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            ff_dfs.append(df)
+    if ff_dfs:
+        ff = pd.concat(ff_dfs)
+        frames["forced_fumbles"] = ff.groupby(["player_id", "season"]).size().reset_index(name="forced_fumbles")
+
+    # Fumble recoveries (opponent only — recovery team != possession team)
+    fr_dfs = []
+    for i in [1, 2]:
+        pid_col = f"fumble_recovery_{i}_player_id"
+        team_col = f"fumble_recovery_{i}_team"
+        if pid_col in pbp.columns and team_col in pbp.columns:
+            df = pbp[pbp["fumble"] == 1][[pid_col, team_col, "posteam", "season"]].copy()
+            df = df.rename(columns={pid_col: "player_id", team_col: "rec_team"})
+            df = df.dropna(subset=["player_id"])
+            # Only count recoveries where the recovering team is NOT the team with possession
+            df = df[df["rec_team"] != df["posteam"]]
+            fr_dfs.append(df[["player_id", "season"]])
+    if fr_dfs:
+        fr = pd.concat(fr_dfs)
+        frames["fumble_recoveries"] = fr.groupby(["player_id", "season"]).size().reset_index(name="fumble_recoveries")
+
+    # Defensive TDs (interception return TD or fumble recovery TD)
+    td_dfs = []
+    if "td_player_id" in pbp.columns:
+        # INT return TDs
+        int_tds = pbp[(pbp["interception"] == 1) & (pbp["touchdown"] == 1)][
+            ["td_player_id", "season"]
+        ].rename(columns={"td_player_id": "player_id"}).dropna(subset=["player_id"])
+        td_dfs.append(int_tds)
+        # Fumble return TDs
+        fum_tds = pbp[(pbp["fumble"] == 1) & (pbp["touchdown"] == 1)][
+            ["td_player_id", "season"]
+        ].rename(columns={"td_player_id": "player_id"}).dropna(subset=["player_id"])
+        td_dfs.append(fum_tds)
+    if td_dfs:
+        def_tds = pd.concat(td_dfs)
+        frames["defensive_tds"] = def_tds.groupby(["player_id", "season"]).size().reset_index(name="defensive_tds")
+
+    # Games played (distinct games where player appears in any defensive stat column)
+    game_dfs = []
+    all_def_pid_cols = [
+        "solo_tackle_1_player_id", "solo_tackle_2_player_id",
+        "assist_tackle_1_player_id", "assist_tackle_2_player_id",
+        "assist_tackle_3_player_id", "assist_tackle_4_player_id",
+        "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
+        "qb_hit_1_player_id", "qb_hit_2_player_id",
+        "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id",
+        "pass_defense_1_player_id", "pass_defense_2_player_id",
+        "interception_player_id",
+        "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id",
+    ]
+    for col in all_def_pid_cols:
+        if col in pbp.columns:
+            df = pbp[[col, "season", "game_id"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            game_dfs.append(df[["player_id", "season", "game_id"]])
+    if game_dfs:
+        all_games = pd.concat(game_dfs).drop_duplicates()
+        frames["games_played"] = all_games.groupby(["player_id", "season"])["game_id"].nunique().reset_index(name="games_played")
+
+    # Merge all stat frames together
+    if not frames:
+        return pd.DataFrame(columns=["player_id", "season"])
+
+    result = None
+    for key, df in frames.items():
+        if result is None:
+            result = df
+        else:
+            result = result.merge(df, on=["player_id", "season"], how="outer")
+
+    # Fill NaN with 0 for count stats
+    fill_cols = [c for c in result.columns if c not in ("player_id", "season")]
+    result[fill_cols] = result[fill_cols].fillna(0)
+
+    # Compute total tackles
+    if "solo_tackles" in result.columns and "assists" in result.columns:
+        result["tackles"] = result["solo_tackles"] + result["assists"]
+
+    return result
+
+
+def _aggregate_offensive_stats(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate play-by-play data into per-player offensive season stats.
+
+    Used as a fallback when import_seasonal_data is unavailable (e.g., 2025 season).
+    """
+    rows = []
+
+    # --- Passing stats (keyed by passer_player_id) ---
+    pass_plays = pbp[pbp["play_type"].isin(["pass", "qb_spike"])].copy()
+    if not pass_plays.empty and "passer_player_id" in pass_plays.columns:
+        pass_agg = pass_plays.groupby(["passer_player_id", "season"]).agg(
+            completions=("complete_pass", "sum"),
+            attempts=("pass_attempt", "sum"),
+            passing_yards=("passing_yards", "sum"),
+            passing_tds=("pass_touchdown", "sum"),
+            interceptions=("interception", "sum"),
+            passing_first_downs=("first_down_pass", "sum"),
+            pass_games=("game_id", "nunique"),
+        ).reset_index().rename(columns={"passer_player_id": "player_id"})
+        rows.append(pass_agg)
+
+    # Sacks (attributed to passer)
+    sack_plays = pbp[pbp["sack"] == 1].copy()
+    if not sack_plays.empty and "passer_player_id" in sack_plays.columns:
+        sack_agg = sack_plays.groupby(["passer_player_id", "season"]).agg(
+            sacks=("sack", "sum"),
+            sack_yards=("yards_gained", lambda x: -x.sum()),  # sack yards are negative
+        ).reset_index().rename(columns={"passer_player_id": "player_id"})
+        rows.append(sack_agg)
+
+    # Sack fumbles (attributed to passer)
+    sack_fumble_plays = pbp[(pbp["sack"] == 1) & (pbp["fumble"] == 1)].copy()
+    if not sack_fumble_plays.empty and "passer_player_id" in sack_fumble_plays.columns:
+        sf_agg = sack_fumble_plays.groupby(["passer_player_id", "season"]).size().reset_index(name="sack_fumbles")
+        sf_agg = sf_agg.rename(columns={"passer_player_id": "player_id"})
+        rows.append(sf_agg)
+
+    # --- Rushing stats (keyed by rusher_player_id) ---
+    rush_plays = pbp[pbp["play_type"] == "run"].copy()
+    if not rush_plays.empty and "rusher_player_id" in rush_plays.columns:
+        rush_agg = rush_plays.groupby(["rusher_player_id", "season"]).agg(
+            carries=("rush_attempt", "sum"),
+            rushing_yards=("rushing_yards", "sum"),
+            rushing_tds=("rush_touchdown", "sum"),
+            rushing_first_downs=("first_down_rush", "sum"),
+            rush_games=("game_id", "nunique"),
+        ).reset_index().rename(columns={"rusher_player_id": "player_id"})
+        rows.append(rush_agg)
+
+    # Rushing fumbles
+    rush_fumble_plays = pbp[(pbp["play_type"] == "run") & (pbp["fumble"] == 1)].copy()
+    if not rush_fumble_plays.empty and "rusher_player_id" in rush_fumble_plays.columns:
+        rf_agg = rush_fumble_plays.groupby(["rusher_player_id", "season"]).size().reset_index(name="rushing_fumbles")
+        rf_agg = rf_agg.rename(columns={"rusher_player_id": "player_id"})
+        rows.append(rf_agg)
+
+    # --- Receiving stats (keyed by receiver_player_id) ---
+    recv_plays = pbp[(pbp["play_type"] == "pass") & (pbp["receiver_player_id"].notna())].copy()
+    if not recv_plays.empty:
+        # Targets = all pass plays aimed at this receiver
+        target_agg = recv_plays.groupby(["receiver_player_id", "season"]).agg(
+            targets=("pass_attempt", "sum"),
+            receptions=("complete_pass", "sum"),
+            receiving_yards=("yards_gained", lambda x: x[recv_plays.loc[x.index, "complete_pass"] == 1].sum()),
+            receiving_tds=("pass_touchdown", "sum"),
+            receiving_first_downs=("first_down_pass", "sum"),
+            receiving_yards_after_catch=("yards_after_catch", "sum"),
+            recv_games=("game_id", "nunique"),
+        ).reset_index().rename(columns={"receiver_player_id": "player_id"})
+        rows.append(target_agg)
+
+    # Receiving fumbles
+    recv_fumble_plays = pbp[(pbp["play_type"] == "pass") & (pbp["complete_pass"] == 1) & (pbp["fumble"] == 1) & (pbp["receiver_player_id"].notna())].copy()
+    if not recv_fumble_plays.empty:
+        recf_agg = recv_fumble_plays.groupby(["receiver_player_id", "season"]).size().reset_index(name="receiving_fumbles")
+        recf_agg = recf_agg.rename(columns={"receiver_player_id": "player_id"})
+        rows.append(recf_agg)
+
+    if not rows:
+        return pd.DataFrame(columns=["player_id", "season"])
+
+    # Merge all frames
+    result = rows[0]
+    for df in rows[1:]:
+        result = result.merge(df, on=["player_id", "season"], how="outer")
+
+    fill_cols = [c for c in result.columns if c not in ("player_id", "season")]
+    result[fill_cols] = result[fill_cols].fillna(0)
+
+    # Compute games played as max across pass/rush/recv games
+    game_cols = [c for c in result.columns if c.endswith("_games")]
+    if game_cols:
+        result["games"] = result[game_cols].max(axis=1).astype(int)
+        result = result.drop(columns=game_cols)
+
+    return result
+
+
+def _aggregate_kicking_stats(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate play-by-play data into per-player kicking season stats."""
+    if "kicker_player_id" not in pbp.columns:
+        return pd.DataFrame(columns=["player_id", "season"])
+
+    # Field goal attempts
+    fg_plays = pbp[pbp["field_goal_attempt"] == 1][
+        ["kicker_player_id", "season", "game_id", "field_goal_result", "kick_distance"]
+    ].copy()
+    fg_plays = fg_plays.rename(columns={"kicker_player_id": "player_id"})
+    fg_plays = fg_plays.dropna(subset=["player_id"])
+
+    if fg_plays.empty:
+        return pd.DataFrame(columns=["player_id", "season"])
+
+    fg_plays["is_made"] = (fg_plays["field_goal_result"] == "made").astype(int)
+    fg_plays["kick_distance"] = pd.to_numeric(fg_plays["kick_distance"], errors="coerce").fillna(0)
+    fg_plays["is_made_40_49"] = ((fg_plays["is_made"] == 1) & (fg_plays["kick_distance"] >= 40) & (fg_plays["kick_distance"] <= 49)).astype(int)
+    fg_plays["is_made_50_plus"] = ((fg_plays["is_made"] == 1) & (fg_plays["kick_distance"] >= 50)).astype(int)
+
+    fg_agg = fg_plays.groupby(["player_id", "season"]).agg(
+        fg_attempts=("is_made", "count"),
+        fg_made=("is_made", "sum"),
+        fg_made_40_49=("is_made_40_49", "sum"),
+        fg_made_50_plus=("is_made_50_plus", "sum"),
+        long_fg=("kick_distance", "max"),
+    ).reset_index()
+
+    # Extra point attempts
+    xp_plays = pbp[pbp["extra_point_attempt"] == 1][
+        ["kicker_player_id", "season", "game_id", "extra_point_result"]
+    ].copy()
+    xp_plays = xp_plays.rename(columns={"kicker_player_id": "player_id"})
+    xp_plays = xp_plays.dropna(subset=["player_id"])
+
+    xp_agg = pd.DataFrame(columns=["player_id", "season", "xp_attempts", "xp_made"])
+    if not xp_plays.empty:
+        xp_plays["is_good"] = (xp_plays["extra_point_result"] == "good").astype(int)
+        xp_agg = xp_plays.groupby(["player_id", "season"]).agg(
+            xp_attempts=("is_good", "count"),
+            xp_made=("is_good", "sum"),
+        ).reset_index()
+
+    # Games played
+    kick_plays = pbp[
+        (pbp["field_goal_attempt"] == 1) | (pbp["extra_point_attempt"] == 1)
+    ][["kicker_player_id", "season", "game_id"]].copy()
+    kick_plays = kick_plays.rename(columns={"kicker_player_id": "player_id"}).dropna(subset=["player_id"])
+    games = kick_plays.groupby(["player_id", "season"])["game_id"].nunique().reset_index(name="games_played")
+
+    # Merge
+    result = fg_agg.merge(xp_agg, on=["player_id", "season"], how="outer")
+    result = result.merge(games, on=["player_id", "season"], how="outer")
+
+    fill_cols = [c for c in result.columns if c not in ("player_id", "season")]
+    result[fill_cols] = result[fill_cols].fillna(0)
+
+    # Compute kicking points
+    result["kicking_points"] = result["fg_made"] * 3 + result["xp_made"]
+
+    return result
+
+
 def ingest_all_stats(seasons: list[int]):
     """
-    Fetch all player stats from nflreadpy and write to database.
+    Fetch all player stats and write to database.
 
-    Uses load_player_stats() which returns weekly stats for ALL positions
-    (offense, defense, kicking) in a single call. Aggregates to seasonal totals.
+    Uses:
+    - import_seasonal_data() for offensive stats (passing, rushing, receiving)
+    - import_pbp_data() for defensive and kicking stats
     """
     init_rankings_db()
     session = RankingsSessionLocal()
     started = datetime.utcnow()
 
     try:
-        print(f"Fetching player stats from nflreadpy for {seasons}...")
-        stats_pl = nflr.load_player_stats(seasons)
-
+        # --- Step 1: Fetch PBP data (needed for defense, kicking, and possibly offense) ---
+        print(f"Fetching play-by-play data for {seasons}...")
+        pbp = nfl.import_pbp_data(seasons, downcast=True)
         # Filter to regular season
-        import polars as pl
-        stats_pl = stats_pl.filter(pl.col("season_type") == "REG")
+        pbp = pbp[pbp["season_type"] == "REG"]
+        print(f"  Got {len(pbp)} regular season plays.")
 
-        # Convert to pandas for DB operations
-        df = stats_pl.to_pandas()
-        print(f"Processing {len(df)} weekly stat rows...")
+        # --- Step 2: Offensive stats ---
+        # Try import_seasonal_data first (faster, pre-aggregated)
+        # Fall back to PBP aggregation if unavailable (e.g., current season)
+        try:
+            print(f"Fetching pre-aggregated seasonal data for {seasons}...")
+            offensive = nfl.import_seasonal_data(seasons, s_type="REG")
+            # Deduplicate by player_id + season (players traded mid-season may appear twice)
+            numeric_cols = offensive.select_dtypes(include=[np.number]).columns.tolist()
+            agg_dict = {c: "sum" for c in numeric_cols if c not in ("season",)}
+            offensive = offensive.groupby(["player_id", "season"], as_index=False).agg(agg_dict)
+            print(f"  Got {len(offensive)} offensive player-season rows.")
+        except Exception as e:
+            print(f"  Seasonal data unavailable ({e}), aggregating from PBP...")
+            offensive = _aggregate_offensive_stats(pbp)
+            print(f"  Got {len(offensive)} offensive player-season rows from PBP.")
 
-        if df.empty:
-            print("No stats returned.")
-            return 0
+        print("Aggregating defensive stats from PBP...")
+        defensive = _aggregate_defensive_stats(pbp)
+        print(f"  Got {len(defensive)} defensive player-season rows.")
 
-        # --- Upsert players from stats data ---
-        print("Upserting players from stats data...")
-        player_cols = ["player_id", "player_display_name", "position", "position_group", "team", "headshot_url"]
-        players_df = df[player_cols].drop_duplicates(subset=["player_id"]).dropna(subset=["player_id"])
+        print("Aggregating kicking stats from PBP...")
+        kicking = _aggregate_kicking_stats(pbp)
+        print(f"  Got {len(kicking)} kicking player-season rows.")
 
-        player_count = 0
-        for _, row in players_df.iterrows():
-            pid = row["player_id"]
-            position = row.get("position") or ""
-            # Determine our position group
-            pos_group = POSITION_TO_GROUP.get(position, "")
-            if not pos_group:
-                # Try nflreadpy's position_group mapping
-                nflr_group = row.get("position_group") or ""
-                pos_group = NFLREADPY_GROUP_MAP.get(nflr_group, "")
-            if not pos_group:
-                continue
+        # Free PBP memory
+        del pbp
 
-            existing = session.get(Player, pid)
-            if existing:
-                existing.display_name = row.get("player_display_name") or existing.display_name
-                existing.position = position or existing.position
-                existing.position_group = pos_group
-                existing.team = row.get("team") or existing.team
-                existing.headshot_url = row.get("headshot_url") or existing.headshot_url
-            else:
-                session.add(Player(
-                    gsis_id=pid,
-                    display_name=row.get("player_display_name") or "Unknown",
-                    position=position,
-                    position_group=pos_group,
-                    team=row.get("team"),
-                    headshot_url=row.get("headshot_url"),
-                ))
-            player_count += 1
-
-        session.commit()
-        print(f"Upserted {player_count} players.")
-
-        # --- Aggregate weekly stats to seasonal totals ---
-        print("Aggregating weekly stats to seasonal totals...")
-
-        # Define aggregation rules
-        sum_cols = [
-            # Passing
-            "completions", "attempts", "passing_yards", "passing_tds",
-            "passing_interceptions", "sacks_suffered", "sack_yards_lost",
-            "passing_first_downs", "sack_fumbles",
-            # Rushing
-            "carries", "rushing_yards", "rushing_tds",
-            "rushing_first_downs", "rushing_fumbles",
-            # Receiving
-            "receptions", "targets", "receiving_yards", "receiving_tds",
-            "receiving_fumbles", "receiving_first_downs",
-            "receiving_yards_after_catch",
-            # Defensive
-            "def_tackles_solo", "def_tackle_assists", "def_sacks",
-            "def_qb_hits", "def_tackles_for_loss", "def_pass_defended",
-            "def_interceptions", "def_fumbles_forced",
-            "fumble_recovery_opp", "def_tds",
-            # Kicking
-            "fg_made", "fg_att", "fg_made_40_49",
-            "fg_made_50_59", "fg_made_60_",
-            "pat_made", "pat_att",
-        ]
-        max_cols = ["fg_long"]
-
-        # Fill NaN with 0 for aggregation
-        for col in sum_cols + max_cols:
-            if col in df.columns:
-                df[col] = df[col].fillna(0)
-
-        # Build aggregation dict
-        agg_dict = {}
-        for col in sum_cols:
-            if col in df.columns:
-                agg_dict[col] = "sum"
-        for col in max_cols:
-            if col in df.columns:
-                agg_dict[col] = "max"
-        agg_dict["game_id"] = "nunique"  # games played
-
-        seasonal = df.groupby(["player_id", "season"]).agg(agg_dict).reset_index()
-        seasonal = seasonal.rename(columns={"game_id": "games_played"})
-
-        print(f"Aggregated to {len(seasonal)} player-seasons.")
-
-        # --- Write to database ---
+        # --- Step 3: Write to database ---
+        print("Writing stats to database...")
         count = 0
-        for _, row in seasonal.iterrows():
-            pid = row["player_id"]
+
+        # Process offensive stats
+        for _, row in offensive.iterrows():
+            pid = row.get("player_id")
+            if not pid or pd.isna(pid):
+                continue
             season_val = int(row["season"])
 
             player = session.get(Player, pid)
             if not player:
                 continue
 
-            games = int(row.get("games_played", 0))
+            games = int(row.get("games", 0))
             if games == 0:
                 continue
 
             existing = session.query(PlayerSeasonStats).filter_by(
                 gsis_id=pid, season=season_val
             ).first()
-
             if not existing:
                 existing = PlayerSeasonStats(gsis_id=pid, season=season_val)
                 session.add(existing)
 
             existing.games_played = games
 
-            # Passing (column name mapping: nflreadpy → our DB)
+            # Passing
             existing.completions = _safe(row, "completions")
             existing.attempts = _safe(row, "attempts")
             existing.passing_yards = _safe(row, "passing_yards")
             existing.passing_tds = _safe(row, "passing_tds")
-            existing.interceptions = _safe(row, "passing_interceptions")
-            existing.sacks = _safe(row, "sacks_suffered")
-            existing.sack_yards = _safe(row, "sack_yards_lost")
+            existing.interceptions = _safe(row, "interceptions")
+            existing.sacks = _safe(row, "sacks")
+            existing.sack_yards = _safe(row, "sack_yards")
             existing.passing_first_downs = _safe(row, "passing_first_downs")
             existing.sack_fumbles = _safe(row, "sack_fumbles")
 
@@ -277,36 +533,89 @@ def ingest_all_stats(seasons: list[int]):
             existing.receiving_first_downs = _safe(row, "receiving_first_downs")
             existing.receiving_yards_after_catch = _safe(row, "receiving_yards_after_catch")
 
-            # Defensive (column name mapping: nflreadpy → our DB)
-            existing.solo_tackles = _safe(row, "def_tackles_solo")
-            existing.assists = _safe(row, "def_tackle_assists")
-            existing.tackles = _safe(row, "def_tackles_solo") + _safe(row, "def_tackle_assists")
-            existing.def_sacks = _safe(row, "def_sacks")
-            existing.qb_hits = _safe(row, "def_qb_hits")
-            existing.tackles_for_loss = _safe(row, "def_tackles_for_loss")
-            existing.passes_defended = _safe(row, "def_pass_defended")
-            existing.def_interceptions = _safe(row, "def_interceptions")
-            existing.forced_fumbles = _safe(row, "def_fumbles_forced")
-            existing.fumble_recoveries = _safe(row, "fumble_recovery_opp")
-            existing.defensive_tds = _safe(row, "def_tds")
+            existing.updated_at = datetime.utcnow()
+            count += 1
 
-            # Kicking (column name mapping: nflreadpy → our DB)
+        # Flush offensive stats so defensive/kicking loops can find existing records
+        session.flush()
+
+        # Process defensive stats
+        for _, row in defensive.iterrows():
+            pid = row.get("player_id")
+            if not pid or (isinstance(pid, float) and pd.isna(pid)):
+                continue
+            season_val = int(row["season"])
+
+            player = session.get(Player, pid)
+            if not player:
+                continue
+
+            existing = session.query(PlayerSeasonStats).filter_by(
+                gsis_id=pid, season=season_val
+            ).first()
+            if not existing:
+                existing = PlayerSeasonStats(gsis_id=pid, season=season_val)
+                session.add(existing)
+
+            if "games_played" in row and row["games_played"] > 0:
+                # Use max of existing and defensive games played
+                existing.games_played = max(existing.games_played or 0, int(row["games_played"]))
+
+            existing.solo_tackles = _safe(row, "solo_tackles")
+            existing.assists = _safe(row, "assists")
+            existing.tackles = _safe(row, "tackles")
+            existing.def_sacks = _safe(row, "def_sacks")
+            existing.qb_hits = _safe(row, "qb_hits")
+            existing.tackles_for_loss = _safe(row, "tackles_for_loss")
+            existing.passes_defended = _safe(row, "passes_defended")
+            existing.def_interceptions = _safe(row, "def_interceptions")
+            existing.forced_fumbles = _safe(row, "forced_fumbles")
+            existing.fumble_recoveries = _safe(row, "fumble_recoveries")
+            existing.defensive_tds = _safe(row, "defensive_tds")
+
+            existing.updated_at = datetime.utcnow()
+            count += 1
+
+        # Flush defensive stats before kicking loop
+        session.flush()
+
+        # Process kicking stats
+        for _, row in kicking.iterrows():
+            pid = row.get("player_id")
+            if not pid or (isinstance(pid, float) and pd.isna(pid)):
+                continue
+            season_val = int(row["season"])
+
+            player = session.get(Player, pid)
+            if not player:
+                continue
+
+            existing = session.query(PlayerSeasonStats).filter_by(
+                gsis_id=pid, season=season_val
+            ).first()
+            if not existing:
+                existing = PlayerSeasonStats(gsis_id=pid, season=season_val)
+                session.add(existing)
+
+            if "games_played" in row and row["games_played"] > 0:
+                existing.games_played = max(existing.games_played or 0, int(row["games_played"]))
+
             existing.fg_made = _safe(row, "fg_made")
-            existing.fg_attempts = _safe(row, "fg_att")
+            existing.fg_attempts = _safe(row, "fg_attempts")
             existing.fg_made_40_49 = _safe(row, "fg_made_40_49")
-            existing.fg_made_50_plus = _safe(row, "fg_made_50_59") + _safe(row, "fg_made_60_")
-            existing.long_fg = _safe(row, "fg_long")
-            existing.xp_made = _safe(row, "pat_made")
-            existing.xp_attempts = _safe(row, "pat_att")
-            existing.kicking_points = _safe(row, "fg_made") * 3 + _safe(row, "pat_made")
+            existing.fg_made_50_plus = _safe(row, "fg_made_50_plus")
+            existing.long_fg = _safe(row, "long_fg")
+            existing.xp_made = _safe(row, "xp_made")
+            existing.xp_attempts = _safe(row, "xp_attempts")
+            existing.kicking_points = _safe(row, "kicking_points")
 
             existing.updated_at = datetime.utcnow()
             count += 1
 
         session.commit()
-        print(f"Ingested stats for {count} player-seasons.")
+        print(f"Ingested stats for {count} player-season entries.")
         for s in seasons:
-            _log_ingestion(session, s, "nflreadpy_all", count, "success", started_at=started)
+            _log_ingestion(session, s, "nfl_data_py", count, "success", started_at=started)
         return count
 
     except Exception as e:
@@ -315,7 +624,7 @@ def ingest_all_stats(seasons: list[int]):
         import traceback
         traceback.print_exc()
         for s in seasons:
-            _log_ingestion(session, s, "nflreadpy_all", 0, "error", str(e), started_at=started)
+            _log_ingestion(session, s, "nfl_data_py", 0, "error", str(e), started_at=started)
         raise
     finally:
         session.close()
@@ -332,11 +641,36 @@ def refresh_all(season: int):
     print("Step 1/2: Ingesting player roster...")
     ingest_players()
 
-    print(f"\nStep 2/2: Ingesting all stats from nflreadpy...")
+    print(f"\nStep 2/2: Ingesting all stats...")
     ingest_all_stats([season])
 
     print(f"\n{'='*60}")
     print(f"  Refresh complete for season {season}!")
+    print(f"{'='*60}\n")
+
+
+def refresh_all_seasons(start_year: int = 1999, end_year: int = 2025):
+    """Ingest all seasons from start_year to end_year."""
+    print(f"\n{'='*60}")
+    print(f"  SSAT Rankings — Full Historical Ingestion ({start_year}–{end_year})")
+    print(f"{'='*60}\n")
+
+    init_rankings_db()
+
+    print("Step 1: Ingesting player roster (one-time)...")
+    ingest_players()
+
+    total = end_year - start_year + 1
+    for i, year in enumerate(range(start_year, end_year + 1), 1):
+        print(f"\n[{i}/{total}] Season {year}...")
+        try:
+            ingest_all_stats([year])
+        except Exception as e:
+            print(f"  ERROR on {year}: {e}")
+            continue
+
+    print(f"\n{'='*60}")
+    print(f"  Historical ingestion complete ({start_year}–{end_year})!")
     print(f"{'='*60}\n")
 
 
