@@ -35,6 +35,7 @@ class PlayerSeasonStats(RankingsBase):
     id = Column(Integer, primary_key=True, autoincrement=True)
     gsis_id = Column(String(20), nullable=False, index=True)
     season = Column(Integer, nullable=False)
+    team = Column(String(5))  # Per-season team assignment
     games_played = Column(Integer, default=0)
 
     # --- Passing stats (QB) ---

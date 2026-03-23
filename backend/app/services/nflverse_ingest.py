@@ -270,6 +270,73 @@ def _aggregate_defensive_stats(pbp: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _extract_season_teams(pbp: pd.DataFrame, seasons: list[int]) -> dict:
+    """Extract per-player per-season team assignments.
+
+    Returns dict of {(player_id, season): team_abbr}.
+    Uses weekly data for offensive players and PBP for defensive/kicking players.
+    """
+    team_map = {}
+
+    # --- Offensive players: from import_weekly_data (has recent_team per game) ---
+    try:
+        weekly = nfl.import_weekly_data(seasons)
+        if "recent_team" in weekly.columns and "player_id" in weekly.columns:
+            weekly = weekly[weekly["season_type"] == "REG"] if "season_type" in weekly.columns else weekly
+            weekly = weekly.dropna(subset=["player_id", "recent_team"])
+            # Take mode (most common team) per player per season
+            off_teams = weekly.groupby(["player_id", "season"])["recent_team"].agg(
+                lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else x.iloc[0]
+            ).reset_index()
+            for _, row in off_teams.iterrows():
+                team_map[(row["player_id"], int(row["season"]))] = row["recent_team"]
+    except Exception as e:
+        print(f"  Warning: could not fetch weekly data for teams: {e}")
+
+    # --- Defensive players: from PBP defteam ---
+    def_pid_cols = [
+        "solo_tackle_1_player_id", "solo_tackle_2_player_id",
+        "assist_tackle_1_player_id", "assist_tackle_2_player_id",
+        "sack_player_id", "half_sack_1_player_id", "half_sack_2_player_id",
+        "interception_player_id",
+        "pass_defense_1_player_id", "pass_defense_2_player_id",
+        "forced_fumble_player_1_player_id", "forced_fumble_player_2_player_id",
+        "qb_hit_1_player_id", "qb_hit_2_player_id",
+        "tackle_for_loss_1_player_id", "tackle_for_loss_2_player_id",
+    ]
+    def_dfs = []
+    for col in def_pid_cols:
+        if col in pbp.columns:
+            df = pbp[[col, "defteam", "season"]].rename(columns={col: "player_id"}).dropna(subset=["player_id"])
+            def_dfs.append(df[["player_id", "defteam", "season"]])
+    if def_dfs:
+        all_def = pd.concat(def_dfs)
+        def_teams = all_def.groupby(["player_id", "season"])["defteam"].agg(
+            lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else x.iloc[0]
+        ).reset_index()
+        for _, row in def_teams.iterrows():
+            key = (row["player_id"], int(row["season"]))
+            if key not in team_map:  # Don't overwrite offensive team
+                team_map[key] = row["defteam"]
+
+    # --- Kickers: from PBP posteam on kicking plays ---
+    if "kicker_player_id" in pbp.columns:
+        kick_plays = pbp[
+            (pbp["field_goal_attempt"] == 1) | (pbp["extra_point_attempt"] == 1)
+        ][["kicker_player_id", "posteam", "season"]].copy()
+        kick_plays = kick_plays.rename(columns={"kicker_player_id": "player_id"}).dropna(subset=["player_id"])
+        if not kick_plays.empty:
+            kick_teams = kick_plays.groupby(["player_id", "season"])["posteam"].agg(
+                lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else x.iloc[0]
+            ).reset_index()
+            for _, row in kick_teams.iterrows():
+                key = (row["player_id"], int(row["season"]))
+                if key not in team_map:
+                    team_map[key] = row["posteam"]
+
+    return team_map
+
+
 def _aggregate_longest_plays(pbp: pd.DataFrame) -> pd.DataFrame:
     """Extract longest rush and longest reception per player per season from PBP."""
     frames = []
@@ -502,6 +569,10 @@ def ingest_all_stats(seasons: list[int]):
             print(f"  Got {len(offensive)} offensive player-season rows from PBP.")
 
         # Extract longest rush and longest reception from PBP
+        print("Extracting per-season team assignments...")
+        team_map = _extract_season_teams(pbp, seasons)
+        print(f"  Got team assignments for {len(team_map)} player-seasons.")
+
         print("Extracting longest rush/reception from PBP...")
         longest_plays = _aggregate_longest_plays(pbp)
 
@@ -543,6 +614,7 @@ def ingest_all_stats(seasons: list[int]):
                 session.add(existing)
 
             existing.games_played = games
+            existing.team = team_map.get((pid, season_val))
 
             # Passing
             existing.completions = _safe(row, "completions")
@@ -619,6 +691,10 @@ def ingest_all_stats(seasons: list[int]):
                 # Use max of existing and defensive games played
                 existing.games_played = max(existing.games_played or 0, int(row["games_played"]))
 
+            # Set team if not already set by offensive stats
+            if not existing.team:
+                existing.team = team_map.get((pid, season_val))
+
             existing.solo_tackles = _safe(row, "solo_tackles")
             existing.assists = _safe(row, "assists")
             existing.tackles = _safe(row, "tackles")
@@ -657,6 +733,9 @@ def ingest_all_stats(seasons: list[int]):
 
             if "games_played" in row and row["games_played"] > 0:
                 existing.games_played = max(existing.games_played or 0, int(row["games_played"]))
+
+            if not existing.team:
+                existing.team = team_map.get((pid, season_val))
 
             existing.fg_made = _safe(row, "fg_made")
             existing.fg_attempts = _safe(row, "fg_attempts")

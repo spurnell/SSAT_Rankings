@@ -78,7 +78,8 @@ def fetch_stats_for_position_group(
     group_config = get_position_group(position_group)
 
     query = """
-        SELECT p.gsis_id AS gsis_id, p.display_name, p.position, p.team,
+        SELECT p.gsis_id AS gsis_id, p.display_name, p.position,
+               COALESCE(s.team, p.team) AS team,
                s.id AS stats_id, s.season, s.games_played,
                s.completions, s.attempts, s.passing_yards, s.passing_tds,
                s.interceptions, s.sacks, s.sack_yards, s.passing_first_downs,
