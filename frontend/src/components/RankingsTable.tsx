@@ -53,6 +53,9 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
   } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Data source toggle (standard vs PFF)
+  const [dataSource, setDataSource] = useState<"standard" | "pff">("standard");
+
   // Career-specific state
   const [careerMode, setCareerMode] = useState<"cumulative" | "per_game">("cumulative");
   const [minSeasons, setMinSeasons] = useState(3);
@@ -71,8 +74,11 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
   }, [positionGroups, selectedPositionGroup]);
 
   const currentCategories = useMemo(() => {
+    if (selectedPositionGroup === "QB" && dataSource === "pff" && currentGroup?.pff_categories) {
+      return currentGroup.pff_categories;
+    }
     return currentGroup?.categories || [];
-  }, [currentGroup]);
+  }, [currentGroup, dataSource, selectedPositionGroup]);
 
   // Fetch position groups on mount
   useEffect(() => {
@@ -140,6 +146,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
             position: positionFilter !== "All" ? positionFilter : undefined,
             min_games: minGames,
             season: selectedSeason || undefined,
+            source: selectedPositionGroup === "QB" && dataSource === "pff" ? "pff" : undefined,
           });
         }
         setPlayers(data);
@@ -159,11 +166,12 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
     }
 
     loadRankings();
-  }, [selectedPositionGroup, positionFilter, minGames, isCareer, careerMode, minSeasons, selectedSeason]);
+  }, [selectedPositionGroup, positionFilter, minGames, isCareer, careerMode, minSeasons, selectedSeason, dataSource]);
 
-  // Reset position filter when position group changes
+  // Reset position filter and data source when position group changes
   useEffect(() => {
     setPositionFilter("All");
+    setDataSource("standard");
   }, [selectedPositionGroup]);
 
   // Auto-select top 2 players on initial load
@@ -283,6 +291,10 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
       receiving: "Receiving",
       accuracy: "Accuracy",
       clutch: "Clutch",
+      pff_accuracy: "Accuracy",
+      pff_decision_making: "Decisions",
+      pff_pocket_presence: "Pocket",
+      pff_playmaking: "Playmaking",
     };
     return shortNames[cat.id] || cat.name;
   };
@@ -364,6 +376,37 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {/* Data Source Toggle (PFF vs Standard, QB only) */}
+        {!isCareer && selectedPositionGroup === "QB" && currentGroup?.available_sources?.includes("pff") && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Data Source
+            </label>
+            <div className="flex rounded-md overflow-hidden border border-slate-300">
+              <button
+                onClick={() => setDataSource("standard")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  dataSource === "standard"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Standard
+              </button>
+              <button
+                onClick={() => setDataSource("pff")}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-slate-300 ${
+                  dataSource === "pff"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                PFF
+              </button>
+            </div>
           </div>
         )}
 

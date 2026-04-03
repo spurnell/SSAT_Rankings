@@ -99,6 +99,55 @@ QB_CATEGORIES: List[CategoryConfig] = [
     },
 ]
 
+# PFF-based QB categories (alternative view using PFF advanced stats)
+PFF_QB_CATEGORIES: List[CategoryConfig] = [
+    {
+        "id": "pff_accuracy",
+        "name": "Accuracy",
+        "stats": ["accuracy_percent", "big_time_throws", "drop_rate_inv"],
+        "weight": 0.30,
+        "log_scale_stats": [],
+    },
+    {
+        "id": "pff_decision_making",
+        "name": "Decision Making",
+        "stats": ["twp_rate_inv", "thrown_aways", "interceptions_inv"],
+        "weight": 0.30,
+        "log_scale_stats": [],
+    },
+    {
+        "id": "pff_pocket_presence",
+        "name": "Pocket Presence",
+        "stats": ["pressure_to_sack_rate_inv", "sack_percent_inv", "scrambles", "hit_as_threw", "fumbles_inv"],
+        "weight": 0.20,
+        "log_scale_stats": [],
+    },
+    {
+        "id": "pff_playmaking",
+        "name": "Playmaking",
+        "stats": ["ypa", "touchdowns", "first_downs"],
+        "weight": 0.20,
+        "log_scale_stats": [],
+    },
+]
+
+PFF_QB_STAT_COLUMNS = [
+    "accuracy_percent", "big_time_throws", "drop_rate_inv",
+    "twp_rate_inv", "thrown_aways", "interceptions_inv",
+    "pressure_to_sack_rate_inv", "sack_percent_inv", "scrambles", "hit_as_threw", "fumbles_inv",
+    "ypa", "touchdowns", "first_downs",
+]
+
+
+def get_pff_qb_config():
+    """Return PFF QB categories, stat columns, and weights."""
+    return {
+        "categories": PFF_QB_CATEGORIES,
+        "stat_columns": PFF_QB_STAT_COLUMNS,
+        "weights": {cat["id"]: cat["weight"] for cat in PFF_QB_CATEGORIES},
+    }
+
+
 # Running back config
 RB_CATEGORIES: List[CategoryConfig] = [
     {

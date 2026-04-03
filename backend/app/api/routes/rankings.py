@@ -12,7 +12,8 @@ from app.models.schemas import (
     PlayerStats,
 )
 from app.services.nfl_data_db import process_player_rankings, get_available_seasons
-from app.core.position_config import get_position_group_list, POSITION_GROUPS
+from app.services.pff_data import process_pff_qb_rankings
+from app.core.position_config import get_position_group_list, POSITION_GROUPS, PFF_QB_CATEGORIES
 
 router = APIRouter()
 
@@ -39,22 +40,33 @@ async def get_position_groups():
     """
     Get list of all available position groups with their categories.
     """
-    return [
-        PositionGroupInfo(
+    results = []
+    for group in get_position_group_list():
+        info = PositionGroupInfo(
             id=group["id"],
             name=group["name"],
             categories=[
                 CategoryInfo(id=cat["id"], name=cat["name"])
                 for cat in group["categories"]
             ],
-            sub_positions=group.get("sub_positions")
+            sub_positions=group.get("sub_positions"),
         )
-        for group in get_position_group_list()
-    ]
+        # Add PFF source info for QB
+        if group["id"] == "QB":
+            info.available_sources = ["standard", "pff"]
+            info.pff_categories = [
+                CategoryInfo(id=cat["id"], name=cat["name"])
+                for cat in PFF_QB_CATEGORIES
+            ]
+        results.append(info)
+    return results
 
 
 @router.get("/position-config/{position_group}")
-async def get_position_config(position_group: str):
+async def get_position_config(
+    position_group: str,
+    source: Optional[str] = Query(None, description="Data source: 'pff' for PFF stats"),
+):
     """
     Get detailed position config including category weights and sub-positions.
     """
@@ -63,6 +75,18 @@ async def get_position_config(position_group: str):
             status_code=400,
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
+
+    if source == "pff" and position_group == "QB":
+        return {
+            "id": "QB",
+            "name": "Quarterbacks (PFF)",
+            "categories": [
+                {"id": cat["id"], "name": cat["name"], "weight": cat["weight"]}
+                for cat in PFF_QB_CATEGORIES
+            ],
+            "sub_positions": [],
+        }
+
     group = POSITION_GROUPS[position_group]
     return {
         "id": group["id"],
@@ -87,6 +111,7 @@ async def get_rankings_by_group(
     position: Optional[str] = Query(None, description="Filter by sub-position (for DEF group)"),
     min_games: int = Query(1, ge=1, le=17, description="Minimum games played"),
     season: Optional[int] = Query(None, description="Season year (default: current season)"),
+    source: Optional[str] = Query(None, description="Data source: 'pff' for PFF stats"),
 ):
     """
     Get ranked list of players for a specific position group.
@@ -99,12 +124,16 @@ async def get_rankings_by_group(
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
 
-    rankings = process_player_rankings(
-        min_games=min_games,
-        position_filter=position,
-        position_group=position_group,
-        season=season,
-    )
+    # PFF source for QBs
+    if source == "pff" and position_group == "QB":
+        rankings = process_pff_qb_rankings(min_games=min_games)
+    else:
+        rankings = process_player_rankings(
+            min_games=min_games,
+            position_filter=position,
+            position_group=position_group,
+            season=season,
+        )
 
     return [
         PlayerDetail(
@@ -261,6 +290,7 @@ class CalculateRequest(BaseModel):
     position: Optional[str] = None
     mode: Optional[str] = None  # "season", "career_cumulative", "career_per_game"
     min_seasons: Optional[int] = None
+    source: Optional[str] = None  # "pff" for PFF stats
 
 
 @router.post("/calculate", response_model=List[PlayerDetail])
@@ -276,12 +306,18 @@ async def calculate_rankings(body: CalculateRequest):
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
 
-    rankings = process_player_rankings(
-        min_games=body.min_games,
-        position_filter=body.position,
-        weights=body.weights,
-        position_group=body.position_group,
-    )
+    if body.source == "pff" and body.position_group == "QB":
+        rankings = process_pff_qb_rankings(
+            min_games=body.min_games,
+            weights=body.weights,
+        )
+    else:
+        rankings = process_player_rankings(
+            min_games=body.min_games,
+            position_filter=body.position,
+            weights=body.weights,
+            position_group=body.position_group,
+        )
 
     return [
         PlayerDetail(

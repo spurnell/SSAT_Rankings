@@ -15,6 +15,8 @@ class PositionGroupInfo(BaseModel):
     name: str
     categories: List[CategoryInfo]
     sub_positions: Optional[List[str]] = None
+    available_sources: Optional[List[str]] = None
+    pff_categories: Optional[List[CategoryInfo]] = None
 
 
 class PlayerBase(BaseModel):
