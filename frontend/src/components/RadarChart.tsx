@@ -72,15 +72,16 @@ export default function RadarChart({
     shortNameToCategory[getShortName(cat)] = cat;
   });
 
-  // Custom tick component — Recharts passes payload, x, y, textAnchor
-  const HoverableTick = (props: {
-    x?: number;
-    y?: number;
-    textAnchor?: string;
-    payload?: { value: string };
-  }) => {
-    const { x = 0, y = 0, textAnchor, payload } = props;
-    const value = payload?.value ?? "";
+  // Custom tick component — Recharts passes payload, x, y, textAnchor.
+  // Recharts' tick prop is loosely typed (x/y can be string|number), so we
+  // accept a permissive shape and coerce to numbers internally.
+  type SvgTextAnchor = "inherit" | "start" | "middle" | "end";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const HoverableTick = (props: any) => {
+    const x = Number(props.x) || 0;
+    const y = Number(props.y) || 0;
+    const textAnchor: SvgTextAnchor | undefined = props.textAnchor;
+    const value: string = props.payload?.value ?? "";
     const cat = shortNameToCategory[value];
     return (
       <g
