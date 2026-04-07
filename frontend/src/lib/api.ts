@@ -4,6 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export interface CategoryInfo {
   id: string;
   name: string;
+  stats?: string[];
 }
 
 // Position group info from API
@@ -12,6 +13,10 @@ export interface PositionGroup {
   name: string;
   categories: CategoryInfo[];
   sub_positions?: string[];
+  available_sources?: string[];
+  pff_categories?: CategoryInfo[];
+  pff_front7_categories?: CategoryInfo[];
+  pff_secondary_categories?: CategoryInfo[];
 }
 
 // New dynamic player interface
@@ -99,6 +104,7 @@ export async function fetchRankings(params?: {
   position?: string;
   min_games?: number;
   season?: number;
+  source?: string;
 }): Promise<PlayerDetail[]> {
   const searchParams = new URLSearchParams();
   if (params?.position && params.position !== "All") {
@@ -109,6 +115,9 @@ export async function fetchRankings(params?: {
   }
   if (params?.season) {
     searchParams.append("season", params.season.toString());
+  }
+  if (params?.source) {
+    searchParams.append("source", params.source);
   }
 
   const positionGroup = params?.position_group || "DEF";

@@ -1,6 +1,7 @@
 "use client";
 
 import { getRankColorWithStyle } from "@/lib/colorUtils";
+import { getStatLabel, HIDDEN_STATS } from "@/lib/statLabels";
 
 interface ProfileStatsTableProps {
   stats: Record<string, number>;
@@ -10,78 +11,6 @@ interface ProfileStatsTableProps {
   player2Name?: string;
   player2Stats?: Record<string, number>;
   player2Ranks?: Record<string, number>;
-}
-
-// Stat display names for all position groups
-const STAT_LABELS: Record<string, string> = {
-  // Defensive
-  tackles: "Tackles",
-  solo_tackles: "Solo Tackles",
-  assists: "Assists",
-  sacks: "Sacks",
-  qb_hits: "QB Hits",
-  tackles_for_loss: "TFL",
-  passes_defended: "Passes Defended",
-  interceptions: "Interceptions",
-  forced_fumbles: "Forced Fumbles",
-  fumble_recoveries: "Fumble Recoveries",
-  defensive_tds: "Defensive TDs",
-  // QB
-  pass_attempts: "Pass Attempts",
-  completions: "Completions",
-  completion_pct: "Completion %",
-  pass_yards: "Pass Yards",
-  pass_tds: "Pass TDs",
-  passer_rating: "Passer Rating",
-  yards_per_attempt: "Yards/Attempt",
-  first_downs: "First Downs",
-  int_rate_inv: "INT Rate (inv)",
-  sack_rate_inv: "Sack Rate (inv)",
-  fumbles_inv: "Fumbles (inv)",
-  // RB
-  rush_attempts: "Rush Attempts",
-  rush_yards: "Rush Yards",
-  yards_per_carry: "Yards/Carry",
-  rush_tds: "Rush TDs",
-  longest_rush: "Longest Rush",
-  fumbles: "Fumbles",
-  receptions: "Receptions",
-  rec_yards: "Rec Yards",
-  rec_tds: "Rec TDs",
-  targets: "Targets",
-  touches: "Touches",
-  yards_per_touch: "Yards/Touch",
-  total_tds: "Total TDs",
-  success_rate: "Success Rate",
-  // WR/TE
-  catch_rate: "Catch Rate",
-  yards_per_reception: "Yards/Rec",
-  yards_per_target: "Yards/Target",
-  longest_rec: "Longest Rec",
-  yards_after_catch: "YAC",
-  // Kicker
-  fg_made: "FG Made",
-  fg_attempts: "FG Attempts",
-  fg_pct: "FG %",
-  fg_made_40_49: "FG 40-49",
-  fg_made_50_plus: "FG 50+",
-  long_fg: "Long FG",
-  xp_made: "XP Made",
-  xp_attempts: "XP Attempts",
-  xp_pct: "XP %",
-  total_points: "Total Points",
-};
-
-// Stats to hide (internal calculations)
-const HIDDEN_STATS = new Set([
-  "int_rate_inv",
-  "sack_rate_inv",
-  "fumbles_inv",
-  "games_played",
-]);
-
-function getStatLabel(key: string): string {
-  return STAT_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
 }
 
 export default function ProfileStatsTable({
