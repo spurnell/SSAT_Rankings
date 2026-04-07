@@ -3,11 +3,13 @@
 import { useState, useEffect, useMemo } from "react";
 import PlayerProfilePanel from "./PlayerProfilePanel";
 import MobileProfileSheet from "./MobileProfileSheet";
+import CategoryStatsTooltip from "./CategoryStatsTooltip";
 import { fetchRankings, fetchCareerRankings, fetchPositionGroups, fetchAvailableSeasons, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
 
 type SortKey = string;
 
 const CAREER_POSITION_GROUPS = ["DEF", "QB", "RB", "WR", "TE", "K"];
+const PFF_AVAILABLE_SEASON = 2025;
 
 function calculateStatRanks(players: PlayerDetail[]): Map<number, Record<string, number>> {
   if (players.length === 0) return new Map();
@@ -53,8 +55,11 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
   } | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Data source toggle (standard vs PFF)
-  const [dataSource, setDataSource] = useState<"standard" | "pff">("standard");
+  // Data source toggle (standard vs PFF variants)
+  const [dataSource, setDataSource] = useState<string>("standard");
+
+  // Category header hover state for stat-breakdown tooltip
+  const [hoveredCategoryId, setHoveredCategoryId] = useState<string | null>(null);
 
   // Career-specific state
   const [careerMode, setCareerMode] = useState<"cumulative" | "per_game">("cumulative");
@@ -74,11 +79,27 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
   }, [positionGroups, selectedPositionGroup]);
 
   const currentCategories = useMemo(() => {
-    if (selectedPositionGroup === "QB" && dataSource === "pff" && currentGroup?.pff_categories) {
+    if (dataSource === "pff" && currentGroup?.pff_categories) {
       return currentGroup.pff_categories;
+    }
+    if (dataSource === "pff_front7" && currentGroup?.pff_front7_categories) {
+      return currentGroup.pff_front7_categories;
+    }
+    if (dataSource === "pff_secondary" && currentGroup?.pff_secondary_categories) {
+      return currentGroup.pff_secondary_categories;
     }
     return currentGroup?.categories || [];
   }, [currentGroup, dataSource, selectedPositionGroup]);
+
+  // Effective sub-positions based on data source (DEF PFF splits filter positions)
+  const effectiveSubPositions = useMemo(() => {
+    if (dataSource === "pff_front7") return ["All", "DL", "EDGE", "LB"];
+    if (dataSource === "pff_secondary") return ["All", "CB", "S"];
+    return currentGroup?.sub_positions || [];
+  }, [currentGroup, dataSource]);
+
+  // PFF data is only available for the 2025 season
+  const pffAvailable = selectedSeason === null || selectedSeason === PFF_AVAILABLE_SEASON;
 
   // Fetch position groups on mount
   useEffect(() => {
@@ -146,7 +167,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
             position: positionFilter !== "All" ? positionFilter : undefined,
             min_games: minGames,
             season: selectedSeason || undefined,
-            source: selectedPositionGroup === "QB" && dataSource === "pff" ? "pff" : undefined,
+            source: dataSource !== "standard" ? dataSource : undefined,
           });
         }
         setPlayers(data);
@@ -173,6 +194,18 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
     setPositionFilter("All");
     setDataSource("standard");
   }, [selectedPositionGroup]);
+
+  // Auto-revert to standard if user picks a non-2025 season while a PFF source is active
+  useEffect(() => {
+    if (!pffAvailable && dataSource !== "standard") {
+      setDataSource("standard");
+    }
+  }, [pffAvailable, dataSource]);
+
+  // Reset position filter when data source changes (e.g. switching front7 <-> secondary)
+  useEffect(() => {
+    setPositionFilter("All");
+  }, [dataSource]);
 
   // Auto-select top 2 players on initial load
   useEffect(() => {
@@ -291,10 +324,43 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
       receiving: "Receiving",
       accuracy: "Accuracy",
       clutch: "Clutch",
+      // QB PFF
       pff_accuracy: "Accuracy",
       pff_decision_making: "Decisions",
       pff_pocket_presence: "Pocket",
       pff_playmaking: "Playmaking",
+      // RB PFF
+      pff_rushing_efficiency: "Rush Eff",
+      pff_explosiveness: "Explosive",
+      pff_volume_production: "Volume",
+      pff_ball_security: "Ball Sec",
+      pff_rb_receiving: "Receiving",
+      // WR PFF
+      pff_route_running: "Routes",
+      pff_hands_catching: "Hands",
+      pff_wr_playmaking: "Playmaking",
+      pff_wr_production: "Production",
+      // TE PFF
+      pff_te_receiving: "Receiving",
+      pff_te_route_running: "Routes",
+      pff_contested_catching: "Contested",
+      pff_blocking: "Blocking",
+      pff_te_playmaking: "Playmaking",
+      // DEF PFF Front 7
+      pff_pass_rush: "Pass Rush",
+      pff_run_defense: "Run Def",
+      pff_tackling: "Tackling",
+      pff_f7_playmaking: "Playmaking",
+      // DEF PFF Secondary
+      pff_sec_coverage: "Coverage",
+      pff_sec_tackling: "Tackling",
+      pff_sec_playmaking: "Playmaking",
+      pff_ball_hawking: "Ball Hawk",
+      // K PFF
+      pff_k_accuracy: "Accuracy",
+      pff_range_power: "Range",
+      pff_k_volume: "Volume",
+      pff_kickoffs: "Kickoffs",
     };
     return shortNames[cat.id] || cat.name;
   };
@@ -379,39 +445,50 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
           </div>
         )}
 
-        {/* Data Source Toggle (PFF vs Standard, QB only) */}
-        {!isCareer && selectedPositionGroup === "QB" && currentGroup?.available_sources?.includes("pff") && (
+        {/* Data Source Toggle */}
+        {!isCareer && currentGroup?.available_sources && currentGroup.available_sources.length > 1 && (
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Data Source
             </label>
             <div className="flex rounded-md overflow-hidden border border-slate-300">
-              <button
-                onClick={() => setDataSource("standard")}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  dataSource === "standard"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                Standard
-              </button>
-              <button
-                onClick={() => setDataSource("pff")}
-                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-slate-300 ${
-                  dataSource === "pff"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                PFF
-              </button>
+              {currentGroup.available_sources.map((src, idx) => {
+                const labels: Record<string, string> = {
+                  standard: "Standard",
+                  pff: "PFF",
+                  pff_front7: "PFF Front 7",
+                  pff_secondary: "PFF Secondary",
+                };
+                const isDisabled = !pffAvailable && src !== "standard";
+                return (
+                  <button
+                    key={src}
+                    onClick={() => setDataSource(src)}
+                    disabled={isDisabled}
+                    title={isDisabled ? `PFF data only available for ${PFF_AVAILABLE_SEASON}` : undefined}
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${
+                      idx > 0 ? "border-l border-slate-300" : ""
+                    } ${
+                      dataSource === src
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-slate-700 hover:bg-slate-50"
+                    } disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white`}
+                  >
+                    {labels[src] || src}
+                  </button>
+                );
+              })}
             </div>
+            {!pffAvailable && (
+              <p className="mt-1 text-xs text-slate-500">
+                PFF data only available for {PFF_AVAILABLE_SEASON}
+              </p>
+            )}
           </div>
         )}
 
         {/* Sub-position filter (only for season mode with groups that have sub_positions) */}
-        {!isCareer && currentGroup?.sub_positions && currentGroup.sub_positions.length > 0 && (
+        {!isCareer && effectiveSubPositions.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Position
@@ -421,7 +498,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
               onChange={(e) => setPositionFilter(e.target.value)}
               className="block w-40 rounded-md border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white text-slate-900 px-3 py-2 border"
             >
-              {currentGroup.sub_positions.map((pos) => (
+              {effectiveSubPositions.map((pos) => (
                 <option key={pos} value={pos}>
                   {pos === "All" ? "All Positions" : pos}
                 </option>
@@ -570,10 +647,18 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
                   {currentCategories.map((cat) => (
                     <th
                       key={cat.id}
-                      className="px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
+                      className="relative px-4 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none"
                       onClick={() => handleSort(cat.id)}
+                      onMouseEnter={() => setHoveredCategoryId(cat.id)}
+                      onMouseLeave={() => setHoveredCategoryId(null)}
                     >
                       {getCategoryShortName(cat)}{getSortIndicator(cat.id)}
+                      {hoveredCategoryId === cat.id && (
+                        <CategoryStatsTooltip
+                          category={cat}
+                          className="absolute left-1/2 top-full mt-1 -translate-x-1/2 normal-case tracking-normal"
+                        />
+                      )}
                     </th>
                   ))}
                 </tr>

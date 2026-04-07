@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Radar,
   RadarChart as RechartsRadarChart,
@@ -11,6 +12,7 @@ import {
   Legend,
 } from "recharts";
 import { CategoryInfo } from "@/lib/api";
+import CategoryStatsTooltip from "./CategoryStatsTooltip";
 
 interface Player2Scores {
   scores: Record<string, number>;
@@ -50,6 +52,13 @@ export default function RadarChart({
   playerName,
   player2,
 }: RadarChartProps) {
+  // Hover state: which category's stats tooltip is open + its position relative to chart container
+  const [hoveredCategory, setHoveredCategory] = useState<{
+    category: CategoryInfo;
+    x: number;
+    y: number;
+  } | null>(null);
+
   const data = categories.map((cat) => ({
     category: getShortName(cat),
     score: categoryScores[cat.id] || 80,
@@ -57,14 +66,58 @@ export default function RadarChart({
     fullMark: 100,
   }));
 
+  // Map short name → full CategoryInfo for the custom tick lookup
+  const shortNameToCategory: Record<string, CategoryInfo> = {};
+  categories.forEach((cat) => {
+    shortNameToCategory[getShortName(cat)] = cat;
+  });
+
+  // Custom tick component — Recharts passes payload, x, y, textAnchor
+  const HoverableTick = (props: {
+    x?: number;
+    y?: number;
+    textAnchor?: string;
+    payload?: { value: string };
+  }) => {
+    const { x = 0, y = 0, textAnchor, payload } = props;
+    const value = payload?.value ?? "";
+    const cat = shortNameToCategory[value];
+    return (
+      <g
+        style={{ cursor: cat ? "pointer" : "default" }}
+        onMouseEnter={() => {
+          if (cat) setHoveredCategory({ category: cat, x, y });
+        }}
+        onMouseLeave={() => setHoveredCategory(null)}
+      >
+        {/* Invisible larger hit area */}
+        <rect
+          x={x - 40}
+          y={y - 12}
+          width={80}
+          height={24}
+          fill="transparent"
+        />
+        <text
+          x={x}
+          y={y}
+          textAnchor={textAnchor}
+          fill="#64748b"
+          fontSize={12}
+          dy="0.35em"
+        >
+          {value}
+        </text>
+      </g>
+    );
+  };
+
   return (
-    <ResponsiveContainer width="100%" height={250}>
+    <div className="relative">
+      <ResponsiveContainer width="100%" height={250}>
       <RechartsRadarChart data={data} cx="50%" cy="50%" outerRadius="70%">
         <PolarGrid stroke="#e2e8f0" />
-        <PolarAngleAxis
-          dataKey="category"
-          tick={{ fill: "#64748b", fontSize: 12 }}
-        />
+        <PolarAngleAxis dataKey="category" tick={HoverableTick} />
         <PolarRadiusAxis
           angle={45}
           domain={[40, 100]}
@@ -114,7 +167,20 @@ export default function RadarChart({
           />
         )}
       </RechartsRadarChart>
-    </ResponsiveContainer>
+      </ResponsiveContainer>
+      {hoveredCategory && (
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: `${hoveredCategory.x}px`,
+            top: `${hoveredCategory.y + 12}px`,
+            transform: "translateX(-50%)",
+          }}
+        >
+          <CategoryStatsTooltip category={hoveredCategory.category} />
+        </div>
+      )}
+    </div>
   );
 }
 

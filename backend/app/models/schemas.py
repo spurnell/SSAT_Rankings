@@ -7,6 +7,7 @@ class CategoryInfo(BaseModel):
     """Information about a ranking category."""
     id: str
     name: str
+    stats: Optional[List[str]] = None
 
 
 class PositionGroupInfo(BaseModel):
@@ -17,6 +18,8 @@ class PositionGroupInfo(BaseModel):
     sub_positions: Optional[List[str]] = None
     available_sources: Optional[List[str]] = None
     pff_categories: Optional[List[CategoryInfo]] = None
+    pff_front7_categories: Optional[List[CategoryInfo]] = None
+    pff_secondary_categories: Optional[List[CategoryInfo]] = None
 
 
 class PlayerBase(BaseModel):

@@ -12,8 +12,8 @@ from app.models.schemas import (
     PlayerStats,
 )
 from app.services.nfl_data_db import process_player_rankings, get_available_seasons
-from app.services.pff_data import process_pff_qb_rankings
-from app.core.position_config import get_position_group_list, POSITION_GROUPS, PFF_QB_CATEGORIES
+from app.services.pff_data import process_pff_rankings
+from app.core.position_config import get_position_group_list, POSITION_GROUPS, get_pff_config, has_pff_source
 
 router = APIRouter()
 
@@ -46,18 +46,35 @@ async def get_position_groups():
             id=group["id"],
             name=group["name"],
             categories=[
-                CategoryInfo(id=cat["id"], name=cat["name"])
+                CategoryInfo(id=cat["id"], name=cat["name"], stats=cat.get("stats", []))
                 for cat in group["categories"]
             ],
             sub_positions=group.get("sub_positions"),
         )
-        # Add PFF source info for QB
-        if group["id"] == "QB":
-            info.available_sources = ["standard", "pff"]
-            info.pff_categories = [
-                CategoryInfo(id=cat["id"], name=cat["name"])
-                for cat in PFF_QB_CATEGORIES
-            ]
+        # Add PFF source info for groups that have PFF configs
+        if group["id"] == "DEF":
+            # DEF has two PFF sub-sources: front7 and secondary
+            info.available_sources = ["standard", "pff_front7", "pff_secondary"]
+            front7_config = get_pff_config("DEF", source="pff_front7")
+            secondary_config = get_pff_config("DEF", source="pff_secondary")
+            if front7_config:
+                info.pff_front7_categories = [
+                    CategoryInfo(id=cat["id"], name=cat["name"], stats=cat.get("stats", []))
+                    for cat in front7_config["categories"]
+                ]
+            if secondary_config:
+                info.pff_secondary_categories = [
+                    CategoryInfo(id=cat["id"], name=cat["name"], stats=cat.get("stats", []))
+                    for cat in secondary_config["categories"]
+                ]
+        else:
+            pff_config = get_pff_config(group["id"])
+            if pff_config:
+                info.available_sources = ["standard", "pff"]
+                info.pff_categories = [
+                    CategoryInfo(id=cat["id"], name=cat["name"], stats=cat.get("stats", []))
+                    for cat in pff_config["categories"]
+                ]
         results.append(info)
     return results
 
@@ -76,16 +93,20 @@ async def get_position_config(
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
 
-    if source == "pff" and position_group == "QB":
-        return {
-            "id": "QB",
-            "name": "Quarterbacks (PFF)",
-            "categories": [
-                {"id": cat["id"], "name": cat["name"], "weight": cat["weight"]}
-                for cat in PFF_QB_CATEGORIES
-            ],
-            "sub_positions": [],
-        }
+    if source and source.startswith("pff"):
+        pff_config = get_pff_config(position_group, source=source)
+        if pff_config:
+            group = POSITION_GROUPS[position_group]
+            suffix = {"pff_front7": " (PFF Front 7)", "pff_secondary": " (PFF Secondary)"}.get(source, " (PFF)")
+            return {
+                "id": position_group,
+                "name": f"{group['name']}{suffix}",
+                "categories": [
+                    {"id": cat["id"], "name": cat["name"], "weight": cat["weight"]}
+                    for cat in pff_config["categories"]
+                ],
+                "sub_positions": group.get("sub_positions", []),
+            }
 
     group = POSITION_GROUPS[position_group]
     return {
@@ -124,9 +145,15 @@ async def get_rankings_by_group(
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
 
-    # PFF source for QBs
-    if source == "pff" and position_group == "QB":
-        rankings = process_pff_qb_rankings(min_games=min_games)
+    # PFF source
+    if source and source.startswith("pff") and get_pff_config(position_group, source=source):
+        rankings = process_pff_rankings(
+            position_group=position_group,
+            min_games=min_games,
+            position_filter=position,
+            source=source,
+            season=season,
+        )
     else:
         rankings = process_player_rankings(
             min_games=min_games,
@@ -306,10 +333,13 @@ async def calculate_rankings(body: CalculateRequest):
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
 
-    if body.source == "pff" and body.position_group == "QB":
-        rankings = process_pff_qb_rankings(
+    if body.source and body.source.startswith("pff") and get_pff_config(body.position_group, source=body.source):
+        rankings = process_pff_rankings(
+            position_group=body.position_group,
             min_games=body.min_games,
             weights=body.weights,
+            position_filter=body.position,
+            source=body.source,
         )
     else:
         rankings = process_player_rankings(

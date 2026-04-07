@@ -4,6 +4,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export interface CategoryInfo {
   id: string;
   name: string;
+  stats?: string[];
 }
 
 // Position group info from API
@@ -14,6 +15,8 @@ export interface PositionGroup {
   sub_positions?: string[];
   available_sources?: string[];
   pff_categories?: CategoryInfo[];
+  pff_front7_categories?: CategoryInfo[];
+  pff_secondary_categories?: CategoryInfo[];
 }
 
 // New dynamic player interface
