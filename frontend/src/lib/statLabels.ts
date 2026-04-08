@@ -19,6 +19,8 @@ export const STAT_LABELS: Record<string, string> = {
   completion_pct: "Completion %",
   pass_yards: "Pass Yards",
   pass_tds: "Pass TDs",
+  interceptions_thrown: "Interceptions Thrown",
+  sacks_taken: "Sacks Taken",
   passer_rating: "Passer Rating",
   yards_per_attempt: "Yards/Attempt",
   first_downs: "First Downs",
@@ -140,6 +142,28 @@ export const HIDDEN_STATS = new Set([
   "sack_rate_inv",
   "fumbles_inv",
   "games_played",
+]);
+
+// Stats where lower values indicate better performance.
+// Mirrors backend/app/core/position_config.py LOWER_IS_BETTER_STATS.
+// Used by RankingsTable.calculateStatRanks to sort ascending so the
+// player with the LOWEST value gets rank #1.
+export const LOWER_IS_BETTER_STATS = new Set<string>([
+  "fumbles",
+  "fumbles_lost",
+  "interceptions_thrown",
+  "sacks_taken",
+  "sack_yards",
+  // PFF raw stats (in case ever displayed directly)
+  "drop_rate",
+  "twp_rate",
+  "pressure_to_sack_rate",
+  "sack_percent",
+  "missed_tackle_rate",
+  "qb_rating_against",
+  "catch_rate_allowed",
+  "yards_per_coverage_snap",
+  "average_yards_per_return",
 ]);
 
 export function getStatLabel(key: string): string {

@@ -138,8 +138,11 @@ def _prepare_qb_stats(df: pd.DataFrame) -> pd.DataFrame:
     df["pass_attempts"] = df["attempts"]
     df["pass_yards"] = df["passing_yards"]
     df["pass_tds"] = df["passing_tds"]
-    # interceptions already named correctly
-    # sacks, sack_yards already named correctly
+    # Rename interceptions/sacks to disambiguate from DEF (where these
+    # stat names mean the opposite — caught/recorded vs thrown/taken).
+    df["interceptions_thrown"] = df["interceptions"]
+    df["sacks_taken"] = df["sacks"]
+    # sack_yards already named correctly
     df["first_downs"] = df["passing_first_downs"]
 
     # Derived stats
@@ -161,7 +164,7 @@ def _prepare_qb_stats(df: pd.DataFrame) -> pd.DataFrame:
             "completions": r["completions"],
             "pass_yards": r["pass_yards"],
             "pass_tds": r["pass_tds"],
-            "interceptions": r["interceptions"],
+            "interceptions": r["interceptions_thrown"],
         }),
         axis=1,
     )
@@ -172,12 +175,12 @@ def _prepare_qb_stats(df: pd.DataFrame) -> pd.DataFrame:
     # Inverted metrics (higher = better ball security)
     df["int_rate_inv"] = np.where(
         df["pass_attempts"] > 0,
-        100 - (df["interceptions"] / df["pass_attempts"] * 100),
+        100 - (df["interceptions_thrown"] / df["pass_attempts"] * 100),
         100.0,
     )
     df["sack_rate_inv"] = np.where(
         df["pass_attempts"] > 0,
-        100 - (df["sacks"] / (df["pass_attempts"] + df["sacks"]) * 100),
+        100 - (df["sacks_taken"] / (df["pass_attempts"] + df["sacks_taken"]) * 100),
         100.0,
     )
     df["fumbles_inv"] = np.where(

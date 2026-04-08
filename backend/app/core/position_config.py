@@ -8,6 +8,38 @@ The ranking engine and frontend read from this config rather than hardcoding val
 from typing import Dict, List, TypedDict, Set
 
 
+# Stats where lower values indicate better performance.
+# The ranking engine negates z-scores for these stats so that high values
+# correctly penalize a player. The frontend mirrors this set in
+# lib/statLabels.ts to reverse per-stat rank ordering in the profile table.
+LOWER_IS_BETTER_STATS: Set[str] = {
+    # Universal
+    "fumbles",
+    "fumbles_lost",
+    # QB raw stats (renamed in nfl_data_db.py to disambiguate from DEF)
+    "interceptions_thrown",
+    "sacks_taken",
+    "sack_yards",
+    # PFF raw stats whose lower-is-better forms are normally surfaced
+    # as _inv variants — included here so that if the raw form is ever
+    # displayed or scored directly, it is treated correctly.
+    "drop_rate",
+    "twp_rate",
+    "pressure_to_sack_rate",
+    "sack_percent",
+    "missed_tackle_rate",
+    "qb_rating_against",
+    "catch_rate_allowed",
+    "yards_per_coverage_snap",
+    "average_yards_per_return",
+}
+
+
+def is_lower_is_better(stat_name: str) -> bool:
+    """Return True if higher values of this stat indicate worse performance."""
+    return stat_name in LOWER_IS_BETTER_STATS
+
+
 class StatConfig(TypedDict):
     """Configuration for a single stat."""
     name: str
@@ -495,9 +527,9 @@ RB_CATEGORIES: List[CategoryConfig] = [
     {
         "id": "efficiency",
         "name": "Efficiency",
-        "stats": ["yards_per_carry", "yards_per_touch", "success_rate"],
+        "stats": ["yards_per_carry", "yards_per_touch", "success_rate", "fumbles"],
         "weight": 0.30,
-        "log_scale_stats": [],
+        "log_scale_stats": ["fumbles"],
     },
     {
         "id": "volume",
@@ -527,9 +559,9 @@ WR_CATEGORIES: List[CategoryConfig] = [
     {
         "id": "efficiency",
         "name": "Efficiency",
-        "stats": ["yards_per_reception", "yards_per_target", "catch_rate"],
+        "stats": ["yards_per_reception", "yards_per_target", "catch_rate", "fumbles"],
         "weight": 0.25,
-        "log_scale_stats": [],
+        "log_scale_stats": ["fumbles"],
     },
     {
         "id": "volume",
@@ -566,9 +598,9 @@ TE_CATEGORIES: List[CategoryConfig] = [
     {
         "id": "efficiency",
         "name": "Efficiency",
-        "stats": ["yards_per_reception", "catch_rate", "yards_per_target"],
+        "stats": ["yards_per_reception", "catch_rate", "yards_per_target", "fumbles"],
         "weight": 0.30,
-        "log_scale_stats": [],
+        "log_scale_stats": ["fumbles"],
     },
     {
         "id": "scoring",
@@ -636,8 +668,8 @@ POSITION_GROUPS: Dict[str, PositionGroupConfig] = {
         "categories": QB_CATEGORIES,
         "stat_columns": [
             "pass_attempts", "completions", "completion_pct", "pass_yards",
-            "pass_tds", "interceptions", "passer_rating", "yards_per_attempt",
-            "sacks", "sack_yards", "first_downs", "fumbles",
+            "pass_tds", "interceptions_thrown", "passer_rating", "yards_per_attempt",
+            "sacks_taken", "sack_yards", "first_downs", "fumbles",
             "int_rate_inv", "sack_rate_inv", "fumbles_inv"
         ],
     },

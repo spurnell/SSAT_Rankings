@@ -5,6 +5,7 @@ import PlayerProfilePanel from "./PlayerProfilePanel";
 import MobileProfileSheet from "./MobileProfileSheet";
 import CategoryStatsTooltip from "./CategoryStatsTooltip";
 import { fetchRankings, fetchCareerRankings, fetchPositionGroups, fetchAvailableSeasons, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
+import { LOWER_IS_BETTER_STATS } from "@/lib/statLabels";
 
 type SortKey = string;
 
@@ -19,9 +20,12 @@ function calculateStatRanks(players: PlayerDetail[]): Map<number, Record<string,
   const rankMap = new Map<number, Record<string, number>>();
 
   for (const stat of statKeys) {
-    const sorted = [...players].sort((a, b) =>
-      (b.stats[stat] || 0) - (a.stats[stat] || 0)
-    );
+    const lowerIsBetter = LOWER_IS_BETTER_STATS.has(stat);
+    const sorted = [...players].sort((a, b) => {
+      const av = a.stats[stat] || 0;
+      const bv = b.stats[stat] || 0;
+      return lowerIsBetter ? av - bv : bv - av;
+    });
     sorted.forEach((player, index) => {
       if (!rankMap.has(player.id)) rankMap.set(player.id, {});
       rankMap.get(player.id)![stat] = index + 1;

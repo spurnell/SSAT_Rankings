@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Set
 
 from app.core.position_config import (
     CategoryConfig,
+    LOWER_IS_BETTER_STATS,
     get_categories_for_group,
     get_log_scale_stats,
     get_category_weights,
@@ -152,6 +153,10 @@ def calculate_raw_category_z_scores(
                     z = 0.0
                 else:
                     z = stat_z_scores[stat][player_idx]
+                # Negate z-score for stats where lower values are better,
+                # so that high raw values correctly penalize the player.
+                if stat in LOWER_IS_BETTER_STATS:
+                    z = -z
                 # Apply log scaling to stats marked for it
                 if stat in cat_log_stats or stat in log_scale_stats:
                     z = log_scale_z_score(z)

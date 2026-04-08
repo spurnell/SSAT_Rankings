@@ -231,7 +231,7 @@ def format_stats_for_group(stats: dict, position_group: str) -> list[str]:
             f"- Completion %: {stats.get('completion_pct', 0):.1f}%",
             f"- Pass Yards: {stats.get('pass_yards', 0)}",
             f"- Pass TDs: {stats.get('pass_tds', 0)}",
-            f"- Interceptions: {stats.get('interceptions', 0)}",
+            f"- Interceptions: {stats.get('interceptions_thrown', 0)}",
             f"- Passer Rating: {stats.get('passer_rating', 0):.1f}",
             f"- Yards Per Attempt: {stats.get('yards_per_attempt', 0):.1f}",
         ]
