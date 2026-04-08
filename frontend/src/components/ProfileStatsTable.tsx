@@ -92,7 +92,7 @@ export default function ProfileStatsTable({
                     </td>
                     <td className="py-1.5 px-1 text-right">
                       <span
-                        className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${p1Better ? "ring-1 ring-blue-400" : ""}`}
+                        className={`inline-block px-1.5 py-0.5 rounded font-medium ${p1Better ? "text-sm ring-2 ring-blue-600 shadow-md font-bold" : "text-xs"}`}
                         style={colorResult.style}
                       >
                         #{rank}
@@ -103,7 +103,7 @@ export default function ProfileStatsTable({
                     </td>
                     <td className="py-1.5 px-1 text-right">
                       <span
-                        className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${p2Better ? "ring-1 ring-orange-400" : ""}`}
+                        className={`inline-block px-1.5 py-0.5 rounded font-medium ${p2Better ? "text-sm ring-2 ring-orange-600 shadow-md font-bold" : "text-xs"}`}
                         style={colorResult2?.style}
                       >
                         #{rank2}
