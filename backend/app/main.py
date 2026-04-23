@@ -2,9 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.routes import rankings, blog
+from app.api.routes import rankings, blog, auth, saved_rankings
 from app.models.schemas import HealthResponse
-from app.db.database import init_db, init_rankings_db
 
 app = FastAPI(
     title=settings.app_name,
@@ -22,12 +21,8 @@ app.add_middleware(
 
 app.include_router(rankings.router, prefix="/api", tags=["rankings"])
 app.include_router(blog.router, prefix="/api", tags=["blog"])
-
-# Initialize database on startup
-@app.on_event("startup")
-async def startup_event():
-    init_db()
-    init_rankings_db()
+app.include_router(auth.router, prefix="/api")
+app.include_router(saved_rankings.router, prefix="/api")
 
 
 @app.get("/health", response_model=HealthResponse)

@@ -1,0 +1,12 @@
+Alembic migrations for the SSAT Rankings Postgres database.
+
+Run migrations:
+    cd backend && alembic upgrade head
+
+Create a new revision (autogenerate from model diffs):
+    cd backend && alembic revision --autogenerate -m "describe change"
+
+Downgrade one step:
+    cd backend && alembic downgrade -1
+
+DATABASE_URL is read from app.core.config.settings (loaded from backend/.env).

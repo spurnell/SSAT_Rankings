@@ -69,12 +69,21 @@ python -m app.cli.generate_blog publish <slug>                    # Publish a dr
 
 Backend (`backend/.env`):
 - `ANTHROPIC_API_KEY` — Required for blog generation
-- `DATABASE_URL` — SQLite path (default: `sqlite:///./data/rankings.db`)
-- `CLERK_ISSUER` — Clerk issuer URL for JWT validation (optional, needed for custom rankings auth)
+- `DATABASE_URL` — Postgres connection string (default: `postgresql+psycopg://postgres:postgres@localhost:5432/ssat`). On Render, wired via `fromDatabase` to the `ssat-postgres` service.
+- `RESEND_API_KEY` — Resend API key for magic-link auth emails (optional — if unset, links are logged to stdout for local dev)
+- `RESEND_FROM_EMAIL` — Verified sender, e.g. `SSAT <noreply@sportssatrankings.com>`
+- `APP_URL` — Frontend origin used to build magic-link URLs (default: `http://localhost:3000`)
 
 Frontend (`frontend/.env.local`):
 - `NEXT_PUBLIC_API_URL` — Backend URL (default: `http://localhost:8000`)
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — Clerk publishable key (optional; if unset, auth UI is hidden and app works without login)
+
+## Database
+
+Postgres, single database, schema managed by Alembic. Migrations live at `backend/alembic/versions/`.
+
+Local dev: run a Postgres (e.g. `docker run -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16`), then `cd backend && source venv/bin/activate && alembic upgrade head`. To seed NFL stats, run `python -m app.cli.ingest_data`. To import from the legacy SQLite files (`data/blog.db` + `data/rankings.db`), run `python scripts/migrate_sqlite_to_postgres.py` once — it's idempotent.
+
+Render deploys run `alembic upgrade head` on each build.
 
 Backend config (`backend/app/core/config.py`):
 - `current_season` — Controls which NFL season data is fetched (currently `2025`)

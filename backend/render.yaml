@@ -1,11 +1,25 @@
+databases:
+  - name: ssat-postgres
+    plan: free  # upgrade later if we outgrow free tier
+
 services:
   - type: web
     name: ssat-rankings-api
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: ANTHROPIC_API_KEY
-        sync: false  # You'll set this manually in Render dashboard
+        sync: false  # Set manually in Render dashboard
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ssat-postgres
+          property: connectionString
+      - key: RESEND_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: RESEND_FROM_EMAIL
+        sync: false  # e.g. "SSAT <noreply@sportssatrankings.com>"
+      - key: APP_URL
+        sync: false  # e.g. "https://sportssatrankings.com"
       - key: PYTHON_VERSION
         value: "3.11"
