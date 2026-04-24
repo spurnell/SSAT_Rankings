@@ -57,13 +57,20 @@ class OkResponse(BaseModel):
 
 
 def _set_session_cookie(response: Response, raw_token: str) -> None:
+    # samesite="none" lets the cookie flow on cross-site XHR — required because
+    # the frontend (sportssatrankings.com via Vercel) and API
+    # (ssat-rankings-api.onrender.com) are different registrable domains.
+    # Browsers require Secure when SameSite=None, which is already the case in
+    # prod (debug=False).  In local dev (debug=True), Secure is off and
+    # same-site localhost scoping makes cookies flow regardless of SameSite.
+    same_site = "lax" if settings.debug else "none"
     response.set_cookie(
         key=settings.session_cookie_name,
         value=raw_token,
         max_age=int(SESSION_TTL.total_seconds()),
         httponly=True,
         secure=not settings.debug,
-        samesite="lax",
+        samesite=same_site,
         path="/",
     )
 
