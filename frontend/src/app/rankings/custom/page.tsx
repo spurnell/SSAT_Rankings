@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useMemo, useCallback, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   fetchPositionConfig,
   calculateRankings,
   CategoryDetailInfo,
+  CategoryStatGroup,
+  CategoryInfo,
   PositionGroupDetail,
   PlayerDetail,
   API_BASE_URL,
@@ -15,6 +17,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { createSavedRanking, SaveRankingPayload } from "@/lib/authApi";
 import RankingsResultsTable from "@/components/RankingsResultsTable";
 import SaveRankingModal, { ShareMode } from "@/components/SaveRankingModal";
+import PlayerProfilePanel from "@/components/PlayerProfilePanel";
+import MobileProfileSheet from "@/components/MobileProfileSheet";
+import { calculateStatRanks } from "@/lib/playerRanks";
 
 const POSITION_GROUPS = [
   { id: "DEF", name: "Defensive Players" },
@@ -62,6 +67,34 @@ function CustomRankingsContent() {
 
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ kind: "ok" | "err"; text: string; url?: string } | null>(null);
+
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  const statRanks = useMemo(() => calculateStatRanks(players), [players]);
+
+  const selectedPlayers = useMemo(
+    () =>
+      selectedPlayerIds
+        .map((id) => players.find((p) => p.id === id))
+        .filter((p): p is PlayerDetail => p !== undefined),
+    [players, selectedPlayerIds]
+  );
+
+  const handleRowClick = (playerId: number) => {
+    setSelectedPlayerIds((current) => {
+      if (current.includes(playerId)) return current.filter((id) => id !== playerId);
+      if (current.length < 2) return [...current, playerId];
+      return [current[0], playerId];
+    });
+  };
 
   const normalizedWeights = useMemo(() => {
     const enabled = categories.filter((c) => c.enabled);
@@ -164,6 +197,23 @@ function CustomRankingsContent() {
   };
 
   const enabledCategories = useMemo(() => categories.filter((c) => c.enabled), [categories]);
+
+  // Stat groups for the player profile panel — built from the position-config
+  // categories (which include `stats: string[]`). Only enabled categories are
+  // shown so the panel mirrors what the user actually scored against.
+  const statGroups = useMemo<CategoryStatGroup[]>(() => {
+    if (!config) return [];
+    const enabledIds = new Set(enabledCategories.map((c) => c.id));
+    return config.categories
+      .filter((c) => enabledIds.has(c.id))
+      .map((c) => ({ id: c.id, name: c.name, statKeys: c.stats ?? [] }));
+  }, [config, enabledCategories]);
+
+  // Radar axes — same source, just {id,name}.
+  const radarCategories = useMemo<CategoryInfo[]>(
+    () => enabledCategories.map((c) => ({ id: c.id, name: c.name })),
+    [enabledCategories]
+  );
 
   async function handleSave(values: { title: string; share_mode: ShareMode }) {
     const apiMode =
@@ -442,11 +492,36 @@ function CustomRankingsContent() {
         </div>
       )}
 
+      {selectedPlayers.length > 0 && !isMobile && (
+        <div className="sticky top-0 z-10 mb-6">
+          <PlayerProfilePanel
+            players={selectedPlayers}
+            categories={radarCategories}
+            ranks={selectedPlayers.map((p) => statRanks.get(p.id) || {})}
+            totalPlayers={players.length}
+            onClose={() => setSelectedPlayerIds([])}
+            statGroups={statGroups}
+          />
+        </div>
+      )}
+      {selectedPlayers.length > 0 && isMobile && (
+        <MobileProfileSheet
+          players={selectedPlayers}
+          categories={radarCategories}
+          ranks={selectedPlayers.map((p) => statRanks.get(p.id) || {})}
+          totalPlayers={players.length}
+          onClose={() => setSelectedPlayerIds([])}
+          statGroups={statGroups}
+        />
+      )}
+
       {players.length > 0 && (
         <RankingsResultsTable
           players={players}
           categories={resultCategoryColumns}
           exportFilenameBase={exportFilenameBase}
+          selectedPlayerIds={selectedPlayerIds}
+          onRowClick={handleRowClick}
         />
       )}
 

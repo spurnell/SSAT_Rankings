@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "./api";
+import { API_BASE_URL, CustomCategory } from "./api";
 
 export interface AuthUser {
   id: number;
@@ -17,6 +17,7 @@ export interface SavedRankingSummary {
 
 export interface SavedRankingDetail extends SavedRankingSummary {
   weights: Record<string, number> | null;
+  categories: CustomCategory[] | null;
   min_games: number | null;
   position_filter: string | null;
   mode: string | null;
@@ -29,6 +30,7 @@ export interface SharedRankingView {
   title: string;
   position_group: string;
   share_mode: "live" | "frozen";
+  categories: CustomCategory[] | null;
   results: Array<Record<string, unknown>>;
   results_computed_at: string | null;
 }
@@ -38,6 +40,7 @@ export interface SaveRankingPayload {
   share_mode: "none" | "live" | "frozen";
   position_group: string;
   weights?: Record<string, number>;
+  categories?: CustomCategory[];
   min_games?: number;
   position_filter?: string;
   mode?: string;

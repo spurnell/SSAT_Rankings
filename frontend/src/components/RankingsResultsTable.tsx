@@ -47,12 +47,18 @@ interface Props {
   players: RankingsResultsPlayer[];
   categories: RankingsCategoryColumn[];
   exportFilenameBase?: string;
+  /** Selected ids for the click-to-open profile panel pattern. First id gets blue ring, second orange. */
+  selectedPlayerIds?: number[];
+  /** When set, rows become clickable and trigger this callback. */
+  onRowClick?: (playerId: number) => void;
 }
 
 export default function RankingsResultsTable({
   players,
   categories,
   exportFilenameBase = "rankings",
+  selectedPlayerIds,
+  onRowClick,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDir } | null>(null);
@@ -182,8 +188,23 @@ export default function RankingsResultsTable({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-200">
-            {filteredAndSorted.map((player, index) => (
-              <tr key={player.id} className="hover:bg-slate-50 transition-colors">
+            {filteredAndSorted.map((player, index) => {
+              const isFirstSelected = selectedPlayerIds?.[0] === player.id;
+              const isSecondSelected = selectedPlayerIds?.[1] === player.id;
+              const rowClasses = [
+                "hover:bg-slate-50 transition-colors",
+                onRowClick ? "cursor-pointer" : "",
+                isFirstSelected ? "bg-blue-50 ring-2 ring-blue-500 ring-inset" : "",
+                isSecondSelected ? "bg-orange-50 ring-2 ring-orange-500 ring-inset" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              return (
+              <tr
+                key={player.id}
+                className={rowClasses}
+                onClick={onRowClick ? () => onRowClick(player.id) : undefined}
+              >
                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-900">{index + 1}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-900">{player.name}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{player.team}</td>
@@ -201,7 +222,8 @@ export default function RankingsResultsTable({
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

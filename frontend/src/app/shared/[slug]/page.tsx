@@ -54,11 +54,14 @@ export default function SharedRankingPage() {
 
   const players = data.results as unknown as RankingsResultsPlayer[];
 
-  // Derive category columns from the first player's category_scores, enriched
-  // with human-readable names from the fetched position config.
+  // Derive category columns from the first player's category_scores. When the
+  // saved ranking includes user-defined categories, prefer those names;
+  // otherwise fall back to the position config's labels.
   const categoryIds = players[0] ? Object.keys(players[0].category_scores ?? {}) : [];
   const nameMap: Record<string, string> = {};
-  if (config) {
+  if (data.categories) {
+    for (const cat of data.categories) nameMap[cat.id] = cat.name;
+  } else if (config) {
     for (const cat of config.categories) nameMap[cat.id] = cat.name;
   }
   const categories: RankingsCategoryColumn[] = categoryIds.map((id) => ({

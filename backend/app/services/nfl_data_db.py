@@ -172,6 +172,17 @@ def _prepare_qb_stats(df: pd.DataFrame) -> pd.DataFrame:
     # Fumbles = sack_fumbles + rushing_fumbles
     df["fumbles"] = df["sack_fumbles"].fillna(0) + df["rushing_fumbles"].fillna(0)
 
+    # Rushing stats (mobile QBs)
+    df["rush_attempts"] = df["carries"].fillna(0)
+    df["rush_yards"] = df["rushing_yards"].fillna(0)
+    df["rush_tds"] = df["rushing_tds"].fillna(0)
+    df["yards_per_carry"] = np.where(
+        df["rush_attempts"] > 0,
+        df["rush_yards"] / df["rush_attempts"],
+        0.0,
+    )
+    df["rushing_first_downs"] = df["rushing_first_downs"].fillna(0)
+
     # Inverted metrics (higher = better ball security)
     df["int_rate_inv"] = np.where(
         df["pass_attempts"] > 0,
@@ -369,13 +380,19 @@ def process_player_rankings(
         all_stats, categories, log_scale_stats
     )
 
-    # Calculate raw overall z-scores
-    category_weights = weights or get_category_weights(position_group)
+    # Calculate raw overall z-scores. When the caller supplied weights
+    # explicitly (e.g. a saved ranking), default missing categories to 0 so
+    # that adding a new category to position_config later doesn't silently
+    # change the score on rankings that were saved before the new category
+    # existed. Only the position-config-default path keeps the 0.25 fallback.
+    explicit = weights is not None
+    category_weights = weights if explicit else get_category_weights(position_group)
+    default_weight = 0.0 if explicit else 0.25
     num_players = len(all_stats)
     raw_overall_scores = []
     for i in range(num_players):
         raw_overall = sum(
-            raw_category_scores[cat["id"]][i] * category_weights.get(cat["id"], 0.25)
+            raw_category_scores[cat["id"]][i] * category_weights.get(cat["id"], default_weight)
             for cat in categories
             if cat["id"] in raw_category_scores
         )

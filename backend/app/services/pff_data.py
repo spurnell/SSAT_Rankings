@@ -118,7 +118,7 @@ def load_pff_data(position_group: str) -> pd.DataFrame:
 
 
 def _prepare_pff_qb_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute inverted stats for QB."""
+    """Compute inverted stats for QB and merge in PFF rushing data for mobile QBs."""
     df = df.copy()
     df["drop_rate_inv"] = 100 - df["drop_rate"].fillna(0)
     df["twp_rate_inv"] = 100 - df["twp_rate"].fillna(0)
@@ -130,6 +130,41 @@ def _prepare_pff_qb_stats(df: pd.DataFrame) -> pd.DataFrame:
         100 - (df["grades_hands_fumble"].fillna(0) / df["player_game_count"] * 10),
         100.0,
     )
+
+    # Merge in QB rows from the PFF rushing CSV. Renaming up front so the
+    # rushing-side columns don't collide with passing-CSV columns of the same
+    # name (yards, touchdowns, first_downs, attempts, ypa).
+    rushing_path = DATA_DIR / "pff_rushing_2025.csv"
+    rush_cols = [
+        "rush_yards", "rush_tds", "rush_ypa", "rush_yco_attempt",
+        "rush_elusive_rating", "rush_first_downs", "rush_attempts",
+        "rush_breakaway_percent",
+    ]
+    if rushing_path.exists():
+        rdf = pd.read_csv(rushing_path)
+        if "position" in rdf.columns:
+            rdf = rdf[rdf["position"] == "QB"]
+        rename_map = {
+            "yards": "rush_yards",
+            "touchdowns": "rush_tds",
+            "ypa": "rush_ypa",
+            "yco_attempt": "rush_yco_attempt",
+            "elusive_rating": "rush_elusive_rating",
+            "first_downs": "rush_first_downs",
+            "attempts": "rush_attempts",
+            "breakaway_percent": "rush_breakaway_percent",
+        }
+        keep = ["player_id"] + [src for src in rename_map if src in rdf.columns]
+        rdf = rdf[keep].rename(columns=rename_map)
+        df = df.merge(rdf, on="player_id", how="left")
+
+    # Pure pocket QBs may have no rushing row — fill those with 0 so they
+    # score low (correct) in the rushing category rather than dropping out.
+    for col in rush_cols:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = df[col].fillna(0.0)
+
     return df
 
 
@@ -254,7 +289,11 @@ def process_pff_rankings(
 
     categories = config["categories"]
     stat_cols = config["stat_columns"]
-    category_weights = weights or config["weights"]
+    # When weights were supplied explicitly (saved ranking), fall back to 0
+    # for missing category ids; only the config-defaults path uses 0.20.
+    explicit_weights = weights is not None
+    category_weights = weights if explicit_weights else config["weights"]
+    default_weight = 0.0 if explicit_weights else 0.20
 
     df = load_pff_data(internal_group)
     if df.empty:
@@ -305,7 +344,7 @@ def process_pff_rankings(
     raw_overall_scores = []
     for i in range(num_players):
         raw_overall = sum(
-            raw_category_scores[cat["id"]][i] * category_weights.get(cat["id"], 0.20)
+            raw_category_scores[cat["id"]][i] * category_weights.get(cat["id"], default_weight)
             for cat in categories
             if cat["id"] in raw_category_scores
         )

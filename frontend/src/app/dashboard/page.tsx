@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +11,7 @@ import {
   updateSavedRanking,
 } from "@/lib/authApi";
 import { ShareMode } from "@/components/SaveRankingModal";
+import NewRankingChooserModal from "@/components/NewRankingChooserModal";
 
 const POSITION_GROUP_NAMES: Record<string, string> = {
   DEF: "Defense",
@@ -29,6 +29,7 @@ export default function DashboardPage() {
   const [rankings, setRankings] = useState<SavedRankingSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chooserOpen, setChooserOpen] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -84,12 +85,12 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-slate-900">Your saved rankings</h1>
           <p className="text-slate-600 mt-2">Signed in as {user.email}</p>
         </div>
-        <Link
-          href="/rankings/custom"
+        <button
+          onClick={() => setChooserOpen(true)}
           className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
         >
           + New ranking
-        </Link>
+        </button>
       </div>
 
       {error && (
@@ -101,12 +102,12 @@ export default function DashboardPage() {
       ) : rankings.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <p className="text-slate-600 mb-4">No saved rankings yet.</p>
-          <Link
-            href="/rankings/custom"
+          <button
+            onClick={() => setChooserOpen(true)}
             className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
           >
             Create your first ranking
-          </Link>
+          </button>
         </div>
       ) : (
         <ul className="space-y-3">
@@ -163,6 +164,11 @@ export default function DashboardPage() {
           })}
         </ul>
       )}
+
+      <NewRankingChooserModal
+        open={chooserOpen}
+        onClose={() => setChooserOpen(false)}
+      />
     </div>
   );
 }

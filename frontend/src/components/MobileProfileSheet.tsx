@@ -3,7 +3,7 @@
 import { useState } from "react";
 import RadarChart from "./RadarChart";
 import ProfileStatsTable from "./ProfileStatsTable";
-import { CategoryInfo, PlayerDetail } from "@/lib/api";
+import { CategoryInfo, CategoryStatGroup, PlayerDetail } from "@/lib/api";
 
 interface MobileProfileSheetProps {
   players: PlayerDetail[];
@@ -11,6 +11,7 @@ interface MobileProfileSheetProps {
   ranks: Record<string, number>[];
   totalPlayers: number;
   onClose: () => void;
+  statGroups?: CategoryStatGroup[];
 }
 
 export default function MobileProfileSheet({
@@ -19,6 +20,7 @@ export default function MobileProfileSheet({
   ranks,
   totalPlayers,
   onClose,
+  statGroups,
 }: MobileProfileSheetProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -173,6 +175,7 @@ export default function MobileProfileSheet({
                   player2Name={player2?.name}
                   player2Stats={player2?.stats}
                   player2Ranks={ranks[1]}
+                  groups={statGroups}
                 />
               </div>
             </div>

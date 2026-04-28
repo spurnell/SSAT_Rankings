@@ -66,7 +66,12 @@ class SavedRanking(Base):
 
     # Ranking config (matches /api/calculate inputs)
     position_group = Column(Text, nullable=False)
-    weights = Column(JSONB, nullable=False)
+    # weights is null when the ranking uses user-defined categories instead.
+    weights = Column(JSONB, nullable=True)
+    # User-defined categories (custom-category builder). Null for default-category rankings.
+    # Shape: [{"id": str, "name": str, "weight": float,
+    #          "stats": [{"source": str, "name": str}, ...]}, ...]
+    categories = Column(JSONB, nullable=True)
     min_games = Column(Integer, nullable=True)
     mode = Column(Text, nullable=True)  # "season" | "cumulative" | "per_game"
     min_seasons = Column(Integer, nullable=True)

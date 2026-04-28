@@ -4,35 +4,13 @@ import { useState, useEffect, useMemo } from "react";
 import PlayerProfilePanel from "./PlayerProfilePanel";
 import MobileProfileSheet from "./MobileProfileSheet";
 import CategoryStatsTooltip from "./CategoryStatsTooltip";
-import { fetchRankings, fetchCareerRankings, fetchPositionGroups, fetchAvailableSeasons, PositionGroup, PlayerDetail, CategoryInfo } from "@/lib/api";
-import { LOWER_IS_BETTER_STATS } from "@/lib/statLabels";
+import { fetchRankings, fetchCareerRankings, fetchPositionGroups, fetchAvailableSeasons, PositionGroup, PlayerDetail, CategoryInfo, CategoryStatGroup } from "@/lib/api";
+import { calculateStatRanks } from "@/lib/playerRanks";
 
 type SortKey = string;
 
 const CAREER_POSITION_GROUPS = ["DEF", "QB", "RB", "WR", "TE", "K"];
 const PFF_AVAILABLE_SEASON = 2025;
-
-function calculateStatRanks(players: PlayerDetail[]): Map<number, Record<string, number>> {
-  if (players.length === 0) return new Map();
-
-  // Get all stat keys from first player
-  const statKeys = Object.keys(players[0]?.stats || {});
-  const rankMap = new Map<number, Record<string, number>>();
-
-  for (const stat of statKeys) {
-    const lowerIsBetter = LOWER_IS_BETTER_STATS.has(stat);
-    const sorted = [...players].sort((a, b) => {
-      const av = a.stats[stat] || 0;
-      const bv = b.stats[stat] || 0;
-      return lowerIsBetter ? av - bv : bv - av;
-    });
-    sorted.forEach((player, index) => {
-      if (!rankMap.has(player.id)) rankMap.set(player.id, {});
-      rankMap.get(player.id)![stat] = index + 1;
-    });
-  }
-  return rankMap;
-}
 
 interface RankingsTableProps {
   mode?: "season" | "career";
@@ -94,6 +72,18 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
     }
     return currentGroup?.categories || [];
   }, [currentGroup, dataSource, selectedPositionGroup]);
+
+  // Stat groups for the player profile panel — one section per category, with
+  // the stats that contribute to that category's score.
+  const statGroups = useMemo<CategoryStatGroup[]>(
+    () =>
+      currentCategories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        statKeys: c.stats ?? [],
+      })),
+    [currentCategories]
+  );
 
   // Effective sub-positions based on data source (DEF PFF splits filter positions)
   const effectiveSubPositions = useMemo(() => {
@@ -380,6 +370,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
             ranks={selectedPlayers.map((p) => statRanks.get(p.id) || {})}
             totalPlayers={players.length}
             onClose={() => setSelectedPlayerIds([])}
+            statGroups={statGroups}
           />
         </div>
       )}
@@ -392,6 +383,7 @@ export default function RankingsTable({ mode = "season" }: RankingsTableProps) {
           ranks={selectedPlayers.map((p) => statRanks.get(p.id) || {})}
           totalPlayers={players.length}
           onClose={() => setSelectedPlayerIds([])}
+          statGroups={statGroups}
         />
       )}
 

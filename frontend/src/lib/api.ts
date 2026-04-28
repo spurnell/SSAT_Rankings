@@ -70,6 +70,14 @@ export interface CategoryDetailInfo {
   id: string;
   name: string;
   weight: number;
+  stats?: string[];
+}
+
+// Used by ProfileStatsTable to render stats grouped under category headers.
+export interface CategoryStatGroup {
+  id: string;
+  name: string;
+  statKeys: string[];
 }
 
 // Detailed position group config (from /api/position-config endpoint)
@@ -184,14 +192,71 @@ export async function fetchPositionConfig(positionGroup: string): Promise<Positi
   return response.json();
 }
 
-// Calculate rankings with custom weights
+// User-defined custom-category builder types (mirrors backend CustomCategory)
+export type CustomCategoryStatSource =
+  | "standard"
+  | "pff"
+  | "pff_front7"
+  | "pff_secondary";
+
+export interface CustomCategoryStat {
+  source: CustomCategoryStatSource;
+  name: string;
+}
+
+export interface CustomCategory {
+  id: string;
+  name: string;
+  weight: number;
+  stats: CustomCategoryStat[];
+}
+
+// One stat in the bubble grid (mirrors the "stats" entries in /api/available-stats)
+export interface AvailableStat {
+  key: string; // "{source}::{name}"
+  source: CustomCategoryStatSource;
+  name: string;
+  display_name: string;
+  higher_is_better: boolean;
+  log_scale: boolean;
+  default_category: string;
+}
+
+export interface AvailableStatSource {
+  source: CustomCategoryStatSource;
+  label: string;
+  stats: AvailableStat[];
+}
+
+export interface AvailableStatsResponse {
+  position_group: string;
+  sources: AvailableStatSource[];
+}
+
+// Fetch every stat (standard + PFF) available for a position group
+export async function fetchAvailableStats(
+  positionGroup: string
+): Promise<AvailableStatsResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/available-stats/${positionGroup}`
+  );
+  if (!response.ok) {
+    throw new Error("Failed to fetch available stats");
+  }
+  return response.json();
+}
+
+// Calculate rankings with custom weights or user-defined categories.
+// Pass `categories` (multi-source) OR `weights` (single-source) — not both.
 export async function calculateRankings(params: {
   position_group: string;
-  weights: Record<string, number>;
+  weights?: Record<string, number>;
+  categories?: CustomCategory[];
   min_games?: number;
   position?: string;
   mode?: string;
   min_seasons?: number;
+  source?: string;
 }): Promise<PlayerDetail[]> {
   const response = await fetch(`${API_BASE_URL}/api/calculate`, {
     method: "POST",

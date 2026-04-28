@@ -13,7 +13,14 @@ from app.models.schemas import (
 )
 from app.services.nfl_data_db import process_player_rankings, get_available_seasons
 from app.services.pff_data import process_pff_rankings
-from app.core.position_config import get_position_group_list, POSITION_GROUPS, get_pff_config, has_pff_source
+from app.services.custom_categories import process_custom_category_rankings
+from app.core.position_config import (
+    get_position_group_list,
+    POSITION_GROUPS,
+    get_pff_config,
+    has_pff_source,
+    LOWER_IS_BETTER_STATS,
+)
 
 router = APIRouter()
 
@@ -102,7 +109,12 @@ async def get_position_config(
                 "id": position_group,
                 "name": f"{group['name']}{suffix}",
                 "categories": [
-                    {"id": cat["id"], "name": cat["name"], "weight": cat["weight"]}
+                    {
+                        "id": cat["id"],
+                        "name": cat["name"],
+                        "weight": cat["weight"],
+                        "stats": cat.get("stats", []),
+                    }
                     for cat in pff_config["categories"]
                 ],
                 "sub_positions": group.get("sub_positions", []),
@@ -113,7 +125,12 @@ async def get_position_config(
         "id": group["id"],
         "name": group["name"],
         "categories": [
-            {"id": cat["id"], "name": cat["name"], "weight": cat["weight"]}
+            {
+                "id": cat["id"],
+                "name": cat["name"],
+                "weight": cat["weight"],
+                "stats": cat.get("stats", []),
+            }
             for cat in group["categories"]
         ],
         "sub_positions": group.get("sub_positions", []),
@@ -124,6 +141,207 @@ async def get_position_config(
 async def available_seasons():
     """Get list of seasons that have data in the database."""
     return get_available_seasons()
+
+
+# Display-name overrides for stats whose snake_case form doesn't title-case nicely.
+# Anything not listed falls back to ``stat_name.replace("_", " ").title()``.
+_STAT_DISPLAY_OVERRIDES: Dict[str, str] = {
+    "qb_hits": "QB Hits",
+    "tackles_for_loss": "Tackles for Loss",
+    "passes_defended": "Passes Defended",
+    "fumble_recoveries": "Fumble Recoveries",
+    "defensive_tds": "Defensive TDs",
+    "rush_tds": "Rush TDs",
+    "rec_tds": "Receiving TDs",
+    "pass_tds": "Pass TDs",
+    "total_tds": "Total TDs",
+    "rec_yards": "Receiving Yards",
+    "rush_yards": "Rush Yards",
+    "pass_yards": "Pass Yards",
+    "yards_per_carry": "Yards / Carry",
+    "yards_per_touch": "Yards / Touch",
+    "yards_per_reception": "Yards / Reception",
+    "yards_per_target": "Yards / Target",
+    "yards_per_attempt": "Yards / Attempt",
+    "completion_pct": "Completion %",
+    "catch_rate": "Catch Rate",
+    "passer_rating": "Passer Rating",
+    "first_downs": "First Downs",
+    "rushing_first_downs": "Rushing First Downs",
+    "rush_yards": "Rush Yards",
+    "rush_tds": "Rush TDs",
+    "rush_ypa": "Rush Yds / Attempt",
+    "rush_yco_attempt": "Rush YCO / Attempt",
+    "rush_elusive_rating": "Rush Elusive Rating",
+    "rush_first_downs": "Rush First Downs",
+    "rush_attempts": "Rush Attempts",
+    "rush_breakaway_percent": "Rush Breakaway %",
+    "longest_rec": "Longest Reception",
+    "longest_rush": "Longest Rush",
+    "yards_after_catch": "Yards After Catch",
+    "yards_after_catch_per_reception": "YAC / Reception",
+    "fg_made": "FG Made",
+    "fg_attempts": "FG Attempts",
+    "fg_pct": "FG %",
+    "fg_made_40_49": "FG Made 40–49",
+    "fg_made_50_plus": "FG Made 50+",
+    "long_fg": "Longest FG",
+    "xp_made": "XP Made",
+    "xp_attempts": "XP Attempts",
+    "xp_pct": "XP %",
+    "total_points": "Total Points",
+    "int_rate_inv": "INT Rate (inverted)",
+    "sack_rate_inv": "Sack Rate (inverted)",
+    "fumbles_inv": "Fumbles (inverted)",
+    "interceptions_inv": "Interceptions (inverted)",
+    "interceptions_thrown": "Interceptions Thrown",
+    "sacks_taken": "Sacks Taken",
+    "sack_yards": "Sack Yards",
+    "drop_rate_inv": "Drop Rate (inverted)",
+    "twp_rate_inv": "TWP Rate (inverted)",
+    "pressure_to_sack_rate_inv": "Pressure→Sack Rate (inv)",
+    "sack_percent_inv": "Sack % (inverted)",
+    "missed_tackle_rate_inv": "Missed Tackle Rate (inv)",
+    "qb_rating_against_inv": "QB Rating Against (inv)",
+    "catch_rate_inv": "Catch Rate Allowed (inv)",
+    "yards_per_coverage_snap_inv": "Yds / Cov Snap (inv)",
+    "average_yards_per_return_inv": "Avg Return Yds (inv)",
+    "pressures_allowed_inv": "Pressures Allowed (inv)",
+    "ypa": "Yards per Attempt",
+    "yco_attempt": "YCO / Attempt",
+    "yprr": "Yards / Route Run",
+    "elusive_rating": "Elusive Rating",
+    "breakaway_percent": "Breakaway %",
+    "explosive": "Explosive Plays",
+    "avoided_tackles": "Avoided Tackles",
+    "grades_pass_route": "Pass Route Grade",
+    "grades_pass_block": "Pass Block Grade",
+    "grades_pass_rush_defense": "Pass Rush Grade",
+    "grades_run_defense": "Run Defense Grade",
+    "grades_coverage_defense": "Coverage Grade",
+    "grades_tackle": "Tackle Grade",
+    "grades_fgep_kicker": "FG Kicker Grade",
+    "grades_kickoff_kicker": "Kickoff Grade",
+    "pass_rush_win_rate": "Pass Rush Win %",
+    "total_pressures": "Total Pressures",
+    "stop_percent": "Stop %",
+    "pass_break_ups": "Pass Break-ups",
+    "forced_incompletion_rate": "Forced Incompletion %",
+    "coverage_snaps_per_target": "Cov Snaps / Target",
+    "coverage_snaps_per_reception": "Cov Snaps / Reception",
+    "contested_catch_rate": "Contested Catch Rate",
+    "caught_percent": "Caught %",
+    "route_rate": "Route Rate",
+    "targeted_qb_rating": "Targeted QB Rating",
+    "avg_depth_of_target": "ADoT",
+    "big_time_throws": "Big-Time Throws",
+    "thrown_aways": "Thrown Aways",
+    "hit_as_threw": "Hit as Threw",
+    "scrambles": "Scrambles",
+    "accuracy_percent": "Accuracy %",
+    "pat_made": "PAT Made",
+    "pat_percent": "PAT %",
+    "fifty_made": "50+ FG Made",
+    "fifty_percent": "50+ FG %",
+    "forty_percent": "40–49 FG %",
+    "total_made": "Total FG Made",
+    "total_percent": "Total FG %",
+    "touchbacks": "Touchbacks",
+    "prp": "Pass Rush Productivity",
+}
+
+
+def _display_name(stat_name: str) -> str:
+    """Convert a snake_case stat name to a friendly display string."""
+    if stat_name in _STAT_DISPLAY_OVERRIDES:
+        return _STAT_DISPLAY_OVERRIDES[stat_name]
+    return stat_name.replace("_", " ").title()
+
+
+def _is_inverted(stat_name: str) -> bool:
+    """Whether the stat is an _inv-style derived metric (already framed as higher-is-better)."""
+    return stat_name.endswith("_inv")
+
+
+def _build_source_stat_entries(
+    position_group: str,
+    source: str,
+    categories: List[Dict],
+) -> List[Dict]:
+    """Flatten every stat in a source's category list into available-stats entries."""
+    log_set: set = set()
+    for cat in categories:
+        log_set.update(cat.get("log_scale_stats", []))
+
+    seen: set = set()
+    entries: List[Dict] = []
+    for cat in categories:
+        for stat in cat.get("stats", []):
+            if stat in seen:
+                continue
+            seen.add(stat)
+            higher_is_better = (
+                _is_inverted(stat) or stat not in LOWER_IS_BETTER_STATS
+            )
+            entries.append({
+                "key": f"{source}::{stat}",
+                "source": source,
+                "name": stat,
+                "display_name": _display_name(stat),
+                "higher_is_better": higher_is_better,
+                "log_scale": stat in log_set,
+                "default_category": cat["id"],
+            })
+    return entries
+
+
+@router.get("/available-stats/{position_group}")
+async def get_available_stats(position_group: str):
+    """List every stat available for a position group across all sources.
+
+    Drives the bubble grid in the custom-category builder. The ``key`` field
+    is what the frontend should send back in ``CalculateRequest.categories``
+    via ``{"source": ..., "name": ...}``.
+    """
+    if position_group not in POSITION_GROUPS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}",
+        )
+
+    sources_payload: List[Dict] = []
+
+    # Standard source
+    standard_categories = POSITION_GROUPS[position_group]["categories"]
+    sources_payload.append({
+        "source": "standard",
+        "label": "Standard (nflverse)",
+        "stats": _build_source_stat_entries(position_group, "standard", standard_categories),
+    })
+
+    # PFF sources
+    if position_group == "DEF":
+        for src, label in (("pff_front7", "PFF — Front 7"), ("pff_secondary", "PFF — Secondary")):
+            cfg = get_pff_config("DEF", source=src)
+            if cfg:
+                sources_payload.append({
+                    "source": src,
+                    "label": label,
+                    "stats": _build_source_stat_entries(position_group, src, cfg["categories"]),
+                })
+    else:
+        cfg = get_pff_config(position_group)
+        if cfg:
+            sources_payload.append({
+                "source": "pff",
+                "label": "PFF",
+                "stats": _build_source_stat_entries(position_group, "pff", cfg["categories"]),
+            })
+
+    return {
+        "position_group": position_group,
+        "sources": sources_payload,
+    }
 
 
 @router.get("/rankings/{position_group}", response_model=List[PlayerDetail])
@@ -309,23 +527,40 @@ async def compare_players(
     return players
 
 
+class CustomCategoryStat(BaseModel):
+    """A single stat selected by the user for a custom category."""
+    source: str  # "standard" | "pff" | "pff_front7" | "pff_secondary"
+    name: str
+
+
+class CustomCategory(BaseModel):
+    """A user-defined sub-category in the custom-category builder."""
+    id: str
+    name: str
+    weight: float = 1.0
+    stats: List[CustomCategoryStat]
+
+
 class CalculateRequest(BaseModel):
     """Request body for custom weight calculations."""
     position_group: str = "DEF"
     weights: Optional[Dict[str, float]] = None
+    categories: Optional[List[CustomCategory]] = None  # user-defined categories
     min_games: int = 1
     position: Optional[str] = None
     mode: Optional[str] = None  # "season", "career_cumulative", "career_per_game"
     min_seasons: Optional[int] = None
-    source: Optional[str] = None  # "pff" for PFF stats
+    source: Optional[str] = None  # "pff" for PFF stats — ignored when categories is set
 
 
 @router.post("/calculate", response_model=List[PlayerDetail])
 async def calculate_rankings(body: CalculateRequest):
     """
-    Calculate rankings with custom weights.
+    Calculate rankings with custom weights or user-defined categories.
 
-    Weights should sum to 1.0 for proper scaling.
+    If ``categories`` is provided, runs the multi-source compute path that
+    can mix standard + PFF stats within a single ranking. Otherwise falls
+    back to the legacy weights-only path.
     """
     if body.position_group not in POSITION_GROUPS:
         raise HTTPException(
@@ -333,7 +568,18 @@ async def calculate_rankings(body: CalculateRequest):
             detail=f"Invalid position group. Valid groups: {list(POSITION_GROUPS.keys())}"
         )
 
-    if body.source and body.source.startswith("pff") and get_pff_config(body.position_group, source=body.source):
+    if body.categories:
+        custom_payload = [c.model_dump() for c in body.categories]
+        try:
+            rankings = process_custom_category_rankings(
+                position_group=body.position_group,
+                custom_categories=custom_payload,
+                min_games=body.min_games,
+                position_filter=body.position,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    elif body.source and body.source.startswith("pff") and get_pff_config(body.position_group, source=body.source):
         rankings = process_pff_rankings(
             position_group=body.position_group,
             min_games=body.min_games,

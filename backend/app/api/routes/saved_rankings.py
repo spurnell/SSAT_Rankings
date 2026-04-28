@@ -23,6 +23,7 @@ from app.core.auth import get_current_user
 from app.core.position_config import POSITION_GROUPS, get_pff_config
 from app.db.database import get_db
 from app.db.user_models import SavedRanking, User
+from app.services.custom_categories import process_custom_category_rankings
 from app.services.nfl_data_db import process_player_rankings
 from app.services.pff_data import process_pff_rankings
 
@@ -35,11 +36,25 @@ SHARE_MODES = {"none", "live", "frozen"}
 # ---------- schemas ----------
 
 
+class CustomCategoryStatPayload(BaseModel):
+    source: str
+    name: str
+
+
+class CustomCategoryPayload(BaseModel):
+    """A user-defined sub-category (mirrors CustomCategory in routes/rankings.py)."""
+    id: str
+    name: str
+    weight: float = 1.0
+    stats: List[CustomCategoryStatPayload]
+
+
 class RankingConfig(BaseModel):
     """Shape of a saved ranking's configuration (the knobs on /rankings/custom).
     Mirrors CalculateRequest in routes/rankings.py."""
     position_group: str
     weights: Optional[Dict[str, float]] = None
+    categories: Optional[List[CustomCategoryPayload]] = None
     min_games: int = 1
     position_filter: Optional[str] = None
     mode: Optional[str] = None
@@ -56,6 +71,7 @@ class SavedRankingUpdate(BaseModel):
     title: Optional[str] = None
     share_mode: Optional[str] = None
     weights: Optional[Dict[str, float]] = None
+    categories: Optional[List[CustomCategoryPayload]] = None
     min_games: Optional[int] = None
     position_filter: Optional[str] = None
     mode: Optional[str] = None
@@ -79,6 +95,7 @@ class SavedRankingSummary(BaseModel):
 
 class SavedRankingDetail(SavedRankingSummary):
     weights: Optional[Dict[str, float]] = None
+    categories: Optional[List[Dict[str, Any]]] = None
     min_games: Optional[int] = None
     position_filter: Optional[str] = None
     mode: Optional[str] = None
@@ -91,6 +108,7 @@ class SharedRankingView(BaseModel):
     title: str
     position_group: str
     share_mode: str
+    categories: Optional[List[Dict[str, Any]]] = None
     results: List[Dict[str, Any]]
     results_computed_at: Optional[datetime] = None
 
@@ -122,6 +140,13 @@ def _new_share_slug() -> str:
 def _compute_results(cfg: RankingConfig) -> List[Dict[str, Any]]:
     """Run the ranking engine. Returns plain dicts matching the /api/calculate
     response shape — safe to jsonify & cache in results_json."""
+    if cfg.categories:
+        return process_custom_category_rankings(
+            position_group=cfg.position_group,
+            custom_categories=[c.model_dump() for c in cfg.categories],
+            min_games=cfg.min_games,
+            position_filter=cfg.position_filter,
+        )
     if cfg.source and cfg.source.startswith("pff") and get_pff_config(
         cfg.position_group, source=cfg.source
     ):
@@ -140,6 +165,20 @@ def _compute_results(cfg: RankingConfig) -> List[Dict[str, Any]]:
     )
 
 
+def _config_from_row(row: SavedRanking) -> RankingConfig:
+    """Reconstruct a RankingConfig from a stored SavedRanking row."""
+    return RankingConfig(
+        position_group=row.position_group,
+        weights=row.weights,
+        categories=row.categories,
+        min_games=row.min_games or 1,
+        position_filter=row.position_filter,
+        mode=row.mode,
+        min_seasons=row.min_seasons,
+        source=row.source,
+    )
+
+
 def _detail_from_row(row: SavedRanking, results: List[Dict[str, Any]]) -> SavedRankingDetail:
     return SavedRankingDetail(
         id=row.id,
@@ -150,6 +189,7 @@ def _detail_from_row(row: SavedRanking, results: List[Dict[str, Any]]) -> SavedR
         created_at=row.created_at,
         updated_at=row.updated_at,
         weights=row.weights,
+        categories=row.categories,
         min_games=row.min_games,
         position_filter=row.position_filter,
         mode=row.mode,
@@ -184,6 +224,7 @@ def create_saved_ranking(
         title=body.title,
         position_group=body.position_group,
         weights=body.weights,
+        categories=[c.model_dump() for c in body.categories] if body.categories else None,
         min_games=body.min_games,
         mode=body.mode,
         min_seasons=body.min_seasons,
@@ -233,16 +274,7 @@ def get_saved_ranking(
         raise HTTPException(status_code=404, detail="not found")
 
     # Always recompute results for the owner so dashboard edits see fresh numbers.
-    cfg = RankingConfig(
-        position_group=row.position_group,
-        weights=row.weights,
-        min_games=row.min_games or 1,
-        position_filter=row.position_filter,
-        mode=row.mode,
-        min_seasons=row.min_seasons,
-        source=row.source,
-    )
-    results = _compute_results(cfg)
+    results = _compute_results(_config_from_row(row))
     return _detail_from_row(row, results)
 
 
@@ -272,6 +304,10 @@ def update_saved_ranking(
         value = getattr(body, field)
         if value is not None:
             setattr(row, field, value)
+    # categories needs explicit handling: model_dump on each entry, and we
+    # allow callers to clear the field by sending an explicit empty list.
+    if body.categories is not None:
+        row.categories = [c.model_dump() for c in body.categories] or None
 
     # Slug lifecycle: generate on none→shared, clear on shared→none.
     if row.share_mode != "none" and not row.share_slug:
@@ -281,16 +317,7 @@ def update_saved_ranking(
 
     # Frozen results: snapshot if we transitioned into frozen (or refreshed config on a frozen).
     if row.share_mode == "frozen":
-        cfg = RankingConfig(
-            position_group=row.position_group,
-            weights=row.weights,
-            min_games=row.min_games or 1,
-            position_filter=row.position_filter,
-            mode=row.mode,
-            min_seasons=row.min_seasons,
-            source=row.source,
-        )
-        row.results_json = _compute_results(cfg)
+        row.results_json = _compute_results(_config_from_row(row))
         row.results_computed_at = datetime.now(timezone.utc)
     elif prev_share_mode == "frozen" and row.share_mode != "frozen":
         row.results_json = None
@@ -299,16 +326,7 @@ def update_saved_ranking(
     db.commit()
     db.refresh(row)
 
-    cfg = RankingConfig(
-        position_group=row.position_group,
-        weights=row.weights,
-        min_games=row.min_games or 1,
-        position_filter=row.position_filter,
-        mode=row.mode,
-        min_seasons=row.min_seasons,
-        source=row.source,
-    )
-    results = row.results_json if row.share_mode == "frozen" else _compute_results(cfg)
+    results = row.results_json if row.share_mode == "frozen" else _compute_results(_config_from_row(row))
     return _detail_from_row(row, results or [])
 
 
@@ -346,21 +364,13 @@ def get_shared_ranking(
     if row.share_mode == "frozen":
         results = row.results_json or []
     else:
-        cfg = RankingConfig(
-            position_group=row.position_group,
-            weights=row.weights,
-            min_games=row.min_games or 1,
-            position_filter=row.position_filter,
-            mode=row.mode,
-            min_seasons=row.min_seasons,
-            source=row.source,
-        )
-        results = _compute_results(cfg)
+        results = _compute_results(_config_from_row(row))
 
     return SharedRankingView(
         title=row.title,
         position_group=row.position_group,
         share_mode=row.share_mode,
+        categories=row.categories,
         results=results,
         results_computed_at=row.results_computed_at,
     )

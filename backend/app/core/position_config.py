@@ -105,7 +105,7 @@ QB_CATEGORIES: List[CategoryConfig] = [
         "id": "efficiency",
         "name": "Efficiency",
         "stats": ["completion_pct", "yards_per_attempt", "passer_rating"],
-        "weight": 0.30,
+        "weight": 0.25,
         "log_scale_stats": [],
     },
     {
@@ -119,15 +119,27 @@ QB_CATEGORIES: List[CategoryConfig] = [
         "id": "playmaking",
         "name": "Playmaking",
         "stats": ["pass_tds", "yards_per_attempt", "first_downs"],
-        "weight": 0.30,
+        "weight": 0.25,
         "log_scale_stats": [],
     },
     {
         "id": "ball_security",
         "name": "Ball Security",
         "stats": ["int_rate_inv", "sack_rate_inv", "fumbles_inv"],  # _inv = inverted (lower is better)
-        "weight": 0.20,
+        "weight": 0.15,
         "log_scale_stats": [],
+    },
+    {
+        "id": "rushing",
+        "name": "Rushing",
+        "stats": [
+            "rush_yards", "rush_tds", "yards_per_carry", "rushing_first_downs",
+            # Mobility / pressure-evasion: lower is better, engine inverts via
+            # LOWER_IS_BETTER_STATS so a high sack count counts against the QB.
+            "sacks_taken", "sack_yards",
+        ],
+        "weight": 0.15,
+        "log_scale_stats": ["rush_tds"],
     },
 ]
 
@@ -137,14 +149,14 @@ PFF_QB_CATEGORIES: List[CategoryConfig] = [
         "id": "pff_accuracy",
         "name": "Accuracy",
         "stats": ["accuracy_percent", "big_time_throws", "drop_rate_inv"],
-        "weight": 0.30,
+        "weight": 0.25,
         "log_scale_stats": [],
     },
     {
         "id": "pff_decision_making",
         "name": "Decision Making",
         "stats": ["twp_rate_inv", "thrown_aways", "interceptions_inv"],
-        "weight": 0.30,
+        "weight": 0.25,
         "log_scale_stats": [],
     },
     {
@@ -158,8 +170,20 @@ PFF_QB_CATEGORIES: List[CategoryConfig] = [
         "id": "pff_playmaking",
         "name": "Playmaking",
         "stats": ["ypa", "touchdowns", "first_downs"],
-        "weight": 0.20,
+        "weight": 0.15,
         "log_scale_stats": [],
+    },
+    {
+        "id": "pff_rushing",
+        "name": "Rushing",
+        # Stats sourced from pff_rushing_2025.csv via _prepare_pff_qb_stats —
+        # renamed with rush_ prefix to avoid colliding with passing-CSV columns.
+        "stats": [
+            "rush_yards", "rush_tds", "rush_ypa",
+            "rush_yco_attempt", "rush_elusive_rating", "rush_first_downs",
+        ],
+        "weight": 0.15,
+        "log_scale_stats": ["rush_tds"],
     },
 ]
 
@@ -168,6 +192,10 @@ PFF_QB_STAT_COLUMNS = [
     "twp_rate_inv", "thrown_aways", "interceptions_inv",
     "pressure_to_sack_rate_inv", "sack_percent_inv", "scrambles", "hit_as_threw", "fumbles_inv",
     "ypa", "touchdowns", "first_downs",
+    # PFF QB rushing (merged in from pff_rushing_2025.csv)
+    "rush_yards", "rush_tds", "rush_ypa", "rush_yco_attempt",
+    "rush_elusive_rating", "rush_first_downs", "rush_attempts",
+    "rush_breakaway_percent",
 ]
 
 
@@ -670,7 +698,10 @@ POSITION_GROUPS: Dict[str, PositionGroupConfig] = {
             "pass_attempts", "completions", "completion_pct", "pass_yards",
             "pass_tds", "interceptions_thrown", "passer_rating", "yards_per_attempt",
             "sacks_taken", "sack_yards", "first_downs", "fumbles",
-            "int_rate_inv", "sack_rate_inv", "fumbles_inv"
+            "int_rate_inv", "sack_rate_inv", "fumbles_inv",
+            # Rushing (mobile QBs)
+            "rush_attempts", "rush_yards", "rush_tds", "yards_per_carry",
+            "rushing_first_downs",
         ],
     },
     "RB": {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import RadarChart from "./RadarChart";
 import ProfileStatsTable from "./ProfileStatsTable";
-import { CategoryInfo, PlayerDetail } from "@/lib/api";
+import { CategoryInfo, CategoryStatGroup, PlayerDetail } from "@/lib/api";
 
 interface PlayerProfilePanelProps {
   players: PlayerDetail[];
@@ -11,6 +11,8 @@ interface PlayerProfilePanelProps {
   ranks: Record<string, number>[];
   totalPlayers: number;
   onClose: () => void;
+  /** Optional: when provided, the stats table renders rows grouped under category headers. */
+  statGroups?: CategoryStatGroup[];
 }
 
 export default function PlayerProfilePanel({
@@ -19,6 +21,7 @@ export default function PlayerProfilePanel({
   ranks,
   totalPlayers,
   onClose,
+  statGroups,
 }: PlayerProfilePanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const player1 = players[0];
@@ -150,6 +153,7 @@ export default function PlayerProfilePanel({
                   player2Name={player2?.name}
                   player2Stats={player2?.stats}
                   player2Ranks={ranks[1]}
+                  groups={statGroups}
                 />
               </div>
             </div>
