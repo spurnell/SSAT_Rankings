@@ -469,6 +469,66 @@ def get_pff_def_secondary_config():
     }
 
 
+# Coverage-only PFF source — surfaced to the custom-builder bubble grid for
+# LB/CB/S so off-ball linebackers get coverage stats alongside defensive
+# backs. Stats come straight from pff_coverage_2025.csv (no merge with
+# pff_defense_2025.csv), keeping the column set focused on coverage.
+PFF_COVERAGE_CATEGORIES: List[CategoryConfig] = [
+    {
+        "id": "pff_cov_quality",
+        "name": "Coverage Quality",
+        "stats": [
+            "grades_coverage_defense",
+            "qb_rating_against_inv",
+            "catch_rate_inv",
+            "forced_incompletion_rate",
+        ],
+        "weight": 0.45,
+        "log_scale_stats": [],
+    },
+    {
+        "id": "pff_cov_density",
+        "name": "Coverage Density",
+        "stats": [
+            "coverage_snaps_per_target",
+            "coverage_snaps_per_reception",
+            "yards_per_coverage_snap_inv",
+        ],
+        "weight": 0.25,
+        "log_scale_stats": [],
+    },
+    {
+        "id": "pff_cov_playmaking",
+        "name": "Ball Hawking",
+        "stats": ["interceptions", "pass_break_ups", "forced_incompletes"],
+        "weight": 0.30,
+        "log_scale_stats": [],
+    },
+]
+
+PFF_COVERAGE_STAT_COLUMNS = [
+    "grades_coverage_defense",
+    "qb_rating_against_inv",
+    "catch_rate_inv",
+    "forced_incompletion_rate",
+    "coverage_snaps_per_target",
+    "coverage_snaps_per_reception",
+    "yards_per_coverage_snap_inv",
+    "interceptions",
+    "pass_break_ups",
+    "forced_incompletes",
+]
+
+
+def get_pff_coverage_config():
+    """Return PFF Coverage (LB/CB/S) categories, stat columns, and weights."""
+    return {
+        "categories": PFF_COVERAGE_CATEGORIES,
+        "stat_columns": PFF_COVERAGE_STAT_COLUMNS,
+        "weights": {cat["id"]: cat["weight"] for cat in PFF_COVERAGE_CATEGORIES},
+    }
+
+
 # PFF-based K categories
 PFF_K_CATEGORIES: List[CategoryConfig] = [
     {
@@ -530,6 +590,8 @@ def get_pff_config(position_group: str, source: str = "pff"):
             return get_pff_def_front7_config()
         elif source == "pff_secondary":
             return get_pff_def_secondary_config()
+        elif source == "pff_coverage":
+            return get_pff_coverage_config()
         return None  # DEF has no generic "pff" source
 
     configs = {

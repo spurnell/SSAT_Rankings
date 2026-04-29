@@ -35,6 +35,12 @@ PFF_CSV_PATHS: Dict[str, List[tuple]] = {
         ("pff_coverage_2025.csv", "supplementary"),
         ("pff_run_defense_2025.csv", "supplementary"),
     ],
+    # Coverage-only source. Available to LB/CB/S so the custom-builder can
+    # surface coverage stats for off-ball linebackers in addition to DBs.
+    # Pure coverage CSV — no run-defense or pass-rush stats here.
+    "DEF_COVERAGE": [
+        ("pff_coverage_2025.csv", "primary"),
+    ],
     "K": [
         ("pff_field_goal_2025.csv", "primary"),
         ("pff_kickoff_2025.csv", "supplementary"),
@@ -49,6 +55,7 @@ PFF_POSITION_FILTERS: Dict[str, List[str]] = {
     "TE": ["TE"],
     "DEF_FRONT7": ["DI", "ED", "LB"],
     "DEF_SECONDARY": ["CB", "S"],
+    "DEF_COVERAGE": ["LB", "CB", "S"],
     "K": ["K"],
 }
 
@@ -60,6 +67,8 @@ PFF_MIN_THRESHOLDS: Dict[str, Dict] = {
     "TE": {"column": "targets", "value": 15},
     "DEF_FRONT7": {"column": "snap_counts_defense", "value": 100},
     "DEF_SECONDARY": {"column": "snap_counts_defense", "value": 100},
+    # Coverage CSV uses a coverage-snap counter rather than total defensive snaps.
+    "DEF_COVERAGE": {"column": "snap_counts_coverage", "value": 50},
     "K": {"column": "total_attempts", "value": 10},
 }
 
@@ -204,6 +213,32 @@ def _prepare_pff_def_front7_stats(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _prepare_pff_coverage_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute inverted stats for the coverage-only source (LB/CB/S).
+
+    Mirrors the inversions used by DEF_SECONDARY but operates on the pure
+    pff_coverage_2025.csv (no defense/run-defense merge), so the column set
+    is what's surfaced to the bubble grid for LB/CB/S.
+    """
+    df = df.copy()
+    df["missed_tackle_rate"] = df["missed_tackle_rate"].fillna(0)
+    df["missed_tackle_rate_inv"] = 100 - df["missed_tackle_rate"]
+    df["qb_rating_against"] = df["qb_rating_against"].fillna(0)
+    max_qbr = df["qb_rating_against"].max()
+    df["qb_rating_against_inv"] = (
+        max_qbr - df["qb_rating_against"] if max_qbr > 0 else 0.0
+    )
+    df["catch_rate"] = df["catch_rate"].fillna(0)
+    max_cr = df["catch_rate"].max()
+    df["catch_rate_inv"] = max_cr - df["catch_rate"] if max_cr > 0 else 0.0
+    df["yards_per_coverage_snap"] = df["yards_per_coverage_snap"].fillna(0)
+    max_ypcs = df["yards_per_coverage_snap"].max()
+    df["yards_per_coverage_snap_inv"] = (
+        max_ypcs - df["yards_per_coverage_snap"] if max_ypcs > 0 else 0.0
+    )
+    return df
+
+
 def _prepare_pff_def_secondary_stats(df: pd.DataFrame) -> pd.DataFrame:
     """Compute inverted stats for DEF Secondary."""
     df = df.copy()
@@ -249,6 +284,7 @@ _PREPARE_FUNCTIONS = {
     "TE": _prepare_pff_te_stats,
     "DEF_FRONT7": _prepare_pff_def_front7_stats,
     "DEF_SECONDARY": _prepare_pff_def_secondary_stats,
+    "DEF_COVERAGE": _prepare_pff_coverage_stats,
     "K": _prepare_pff_k_stats,
 }
 
@@ -280,8 +316,12 @@ def process_pff_rankings(
 
     # Map source-based DEF requests to internal group keys
     internal_group = position_group
-    if position_group == "DEF" and source in ("pff_front7", "pff_secondary"):
-        internal_group = "DEF_FRONT7" if source == "pff_front7" else "DEF_SECONDARY"
+    if position_group == "DEF" and source in ("pff_front7", "pff_secondary", "pff_coverage"):
+        internal_group = {
+            "pff_front7": "DEF_FRONT7",
+            "pff_secondary": "DEF_SECONDARY",
+            "pff_coverage": "DEF_COVERAGE",
+        }[source]
 
     config = get_pff_config(position_group, source=source)
     if not config:

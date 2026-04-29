@@ -63,6 +63,8 @@ def _internal_pff_group(position_group: str, source: str) -> str:
             return "DEF_FRONT7"
         if source == "pff_secondary":
             return "DEF_SECONDARY"
+        if source == "pff_coverage":
+            return "DEF_COVERAGE"
         raise ValueError(f"Unsupported PFF source for DEF: {source}")
     return position_group
 
