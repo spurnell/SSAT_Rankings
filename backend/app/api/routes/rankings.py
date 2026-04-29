@@ -295,13 +295,36 @@ def _build_source_stat_entries(
     return entries
 
 
+# DEF sub-position → which PFF source the player has data for. The two PFF
+# DEF sources cover disjoint position pools (Front 7 = DL/EDGE/LB,
+# Secondary = CB/S), so any stat picked must come from the camp the
+# selected position belongs to. "All" forbids both because mixing would
+# inner-join to zero players in process_custom_category_rankings.
+_DEF_FRONT7_POSITIONS = {"DL", "EDGE", "LB"}
+_DEF_SECONDARY_POSITIONS = {"CB", "S"}
+
+
 @router.get("/available-stats/{position_group}")
-async def get_available_stats(position_group: str):
+async def get_available_stats(
+    position_group: str,
+    position: Optional[str] = Query(
+        None,
+        description=(
+            "Sub-position filter (DEF only). Restricts which PFF sources are "
+            "exposed so the bubble grid only shows stats every player in the "
+            "selected pool actually has. Pass 'All' or omit for the broadest "
+            "set."
+        ),
+    ),
+):
     """List every stat available for a position group across all sources.
 
     Drives the bubble grid in the custom-category builder. The ``key`` field
     is what the frontend should send back in ``CalculateRequest.categories``
     via ``{"source": ..., "name": ...}``.
+
+    For DEF, the response is filtered by ``position`` so users can't pick
+    incompatible cross-source combinations (which would empty the join).
     """
     if position_group not in POSITION_GROUPS:
         raise HTTPException(
@@ -311,7 +334,7 @@ async def get_available_stats(position_group: str):
 
     sources_payload: List[Dict] = []
 
-    # Standard source
+    # Standard source — always available, every player has these stats.
     standard_categories = POSITION_GROUPS[position_group]["categories"]
     sources_payload.append({
         "source": "standard",
@@ -319,9 +342,19 @@ async def get_available_stats(position_group: str):
         "stats": _build_source_stat_entries(position_group, "standard", standard_categories),
     })
 
-    # PFF sources
+    # PFF sources — gated by sub-position for DEF to prevent zero-join builds.
     if position_group == "DEF":
-        for src, label in (("pff_front7", "PFF — Front 7"), ("pff_secondary", "PFF — Secondary")):
+        normalized = (position or "All").strip()
+        if normalized in _DEF_FRONT7_POSITIONS:
+            allowed_pff_sources = [("pff_front7", "PFF — Front 7")]
+        elif normalized in _DEF_SECONDARY_POSITIONS:
+            allowed_pff_sources = [("pff_secondary", "PFF — Secondary")]
+        else:
+            # "All" or unknown — omit PFF sources entirely. Picking from both
+            # pff_front7 and pff_secondary at once would leave the inner join
+            # in process_custom_category_rankings empty (disjoint player pools).
+            allowed_pff_sources = []
+        for src, label in allowed_pff_sources:
             cfg = get_pff_config("DEF", source=src)
             if cfg:
                 sources_payload.append({

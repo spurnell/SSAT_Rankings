@@ -120,25 +120,48 @@ export default function CustomBuilderPage() {
     }
   }, [subCats, activeSubCatId]);
 
-  const loadAvailable = useCallback(async (groupId: string) => {
-    setAvailableLoading(true);
-    setError(null);
-    try {
-      const data = await fetchAvailableStats(groupId);
-      setAvailable(data);
-    } catch {
-      setError("Failed to load available stats. Is the backend running?");
-    } finally {
-      setAvailableLoading(false);
-    }
-  }, []);
+  const loadAvailable = useCallback(
+    async (groupId: string, pos: string) => {
+      setAvailableLoading(true);
+      setError(null);
+      try {
+        const data = await fetchAvailableStats(groupId, pos);
+        setAvailable(data);
+        // Prune assignments whose stat key is no longer in the available set
+        // — e.g. switching DEF position from DL to CB drops every
+        // pff_front7 stat, and switching position group entirely drops
+        // anything that doesn't exist in the new universe.
+        const allowedKeys = new Set(
+          data.sources.flatMap((s) => s.stats.map((st) => st.key))
+        );
+        setAssignments((prev) => {
+          const next: Record<string, string> = {};
+          for (const [key, subId] of Object.entries(prev)) {
+            if (allowedKeys.has(key)) next[key] = subId;
+          }
+          return next;
+        });
+      } catch {
+        setError("Failed to load available stats. Is the backend running?");
+      } finally {
+        setAvailableLoading(false);
+      }
+    },
+    [],
+  );
 
-  // initial + on group change
+  // Refetch on group or position change. Also clear stale results so the
+  // table doesn't show a ranking computed against the previous filter.
   useEffect(() => {
-    void loadAvailable(selectedGroup);
-    setAssignments({});
+    void loadAvailable(selectedGroup, positionFilter);
     setPlayers([]);
-  }, [selectedGroup, loadAvailable]);
+  }, [selectedGroup, positionFilter, loadAvailable]);
+
+  // Reset position filter to "All" when the position group changes — the
+  // previous filter (e.g. "DL") may not exist in the new group's options.
+  useEffect(() => {
+    setPositionFilter("All");
+  }, [selectedGroup]);
 
   const subCatColor = (id: string) => {
     const idx = subCats.findIndex((s) => s.id === id);

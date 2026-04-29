@@ -233,12 +233,19 @@ export interface AvailableStatsResponse {
   sources: AvailableStatSource[];
 }
 
-// Fetch every stat (standard + PFF) available for a position group
+// Fetch every stat (standard + PFF) available for a position group.
+// `position` narrows the bubble grid to stats compatible with the selected
+// sub-position pool (DEF only — Front 7 vs Secondary share no players, so
+// mixing their PFF stats would empty the join in the compute path).
 export async function fetchAvailableStats(
-  positionGroup: string
+  positionGroup: string,
+  position?: string,
 ): Promise<AvailableStatsResponse> {
+  const params = new URLSearchParams();
+  if (position && position !== "All") params.set("position", position);
+  const qs = params.toString();
   const response = await fetch(
-    `${API_BASE_URL}/api/available-stats/${positionGroup}`
+    `${API_BASE_URL}/api/available-stats/${positionGroup}${qs ? `?${qs}` : ""}`
   );
   if (!response.ok) {
     throw new Error("Failed to fetch available stats");
