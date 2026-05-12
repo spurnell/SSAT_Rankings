@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -85,12 +86,20 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-slate-900">Your saved rankings</h1>
           <p className="text-slate-600 mt-2">Signed in as {user.email}</p>
         </div>
-        <button
-          onClick={() => setChooserOpen(true)}
-          className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-        >
-          + New ranking
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/datasets"
+            className="px-3 py-2 rounded-md border border-slate-300 text-slate-700 text-sm hover:bg-slate-50"
+          >
+            Data uploads
+          </Link>
+          <button
+            onClick={() => setChooserOpen(true)}
+            className="inline-block px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+          >
+            + New ranking
+          </button>
+        </div>
       </div>
 
       {error && (
