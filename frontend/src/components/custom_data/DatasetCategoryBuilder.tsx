@@ -84,7 +84,7 @@ export default function DatasetCategoryBuilder({
           </div>
 
           <div className="text-xs text-slate-600 mb-2">
-            Pick numeric columns for this category. Check "lower is better" for
+            Pick numeric columns for this category. Check &quot;lower is better&quot; for
             stats where smaller values are better (e.g. errors, turnovers).
           </div>
 

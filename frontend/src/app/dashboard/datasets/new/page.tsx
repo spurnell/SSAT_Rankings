@@ -31,7 +31,7 @@ export default function NewDatasetPage() {
 
       <h1 className="text-2xl font-bold text-slate-900 mb-2">New data upload</h1>
       <p className="text-slate-600 mb-6 text-sm">
-        Upload a CSV or XLSX. Once it's created you can append more files later
+        Upload a CSV or XLSX. Once it&apos;s created you can append more files later
         as additional segments — useful for ranking across multiple seasons.
       </p>
 

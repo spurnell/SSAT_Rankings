@@ -30,8 +30,8 @@ export default function SchemaDriftModal({ drift, onClose }: SchemaDriftModalPro
           Schema changes accepted
         </h3>
         <p className="text-sm text-slate-600 mb-4">
-          The new segment didn't match the existing dataset schema exactly.
-          Here's what changed:
+          The new segment didn&apos;t match the existing dataset schema exactly.
+          Here&apos;s what changed:
         </p>
 
         {drift.added.length > 0 && (

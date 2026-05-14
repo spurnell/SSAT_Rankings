@@ -141,7 +141,7 @@ export default function DatasetUploadForm({
         />
         <p className="text-xs text-slate-500 mt-1">
           Identifies this upload within the dataset. Must be unique — e.g.
-          "2024 season", "Week 1-9", etc.
+          &quot;2024 season&quot;, &quot;Week 1-9&quot;, etc.
         </p>
       </div>
 

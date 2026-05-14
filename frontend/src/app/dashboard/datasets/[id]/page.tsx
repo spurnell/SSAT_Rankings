@@ -162,7 +162,7 @@ export default function DatasetDetailPage() {
             <p className="text-xs text-slate-500 mt-3">
               Entities are matched across segments by a normalized form of the
               name column (lowercase, alphanumerics only). Variants like
-              "P. Mahomes" won't merge with "Patrick Mahomes".
+              &quot;P. Mahomes&quot; won&apos;t merge with &quot;Patrick Mahomes&quot;.
             </p>
           </section>
 
