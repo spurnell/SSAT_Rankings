@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.routes import rankings, blog, auth, saved_rankings
+from app.api.routes import rankings, blog, auth, saved_rankings, custom_data
 from app.models.schemas import HealthResponse
 
 app = FastAPI(
@@ -23,6 +23,7 @@ app.include_router(rankings.router, prefix="/api", tags=["rankings"])
 app.include_router(blog.router, prefix="/api", tags=["blog"])
 app.include_router(auth.router, prefix="/api")
 app.include_router(saved_rankings.router, prefix="/api")
+app.include_router(custom_data.router, prefix="/api")
 
 
 @app.get("/health", response_model=HealthResponse)

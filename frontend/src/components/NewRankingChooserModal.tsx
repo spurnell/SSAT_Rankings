@@ -54,7 +54,7 @@ export default function NewRankingChooserModal({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <button
             onClick={() => {
               router.push("/rankings/custom");
@@ -84,6 +84,22 @@ export default function NewRankingChooserModal({
             <div className="text-sm text-slate-600 mt-2">
               Pick stats yourself (including PFF) and group them into up to 5
               sub-categories with custom weights.
+            </div>
+          </button>
+
+          <button
+            onClick={() => {
+              router.push("/dashboard/datasets/new");
+              onClose();
+            }}
+            className="text-left rounded-lg border border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition p-5 group"
+          >
+            <div className="text-base font-semibold text-slate-900 group-hover:text-blue-700">
+              Upload your own data
+            </div>
+            <div className="text-sm text-slate-600 mt-2">
+              CSV or XLSX. Append more files later as additional segments and
+              rank across them.
             </div>
           </button>
         </div>

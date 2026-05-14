@@ -13,6 +13,7 @@ from app.db.database import Base
 import app.db.models  # noqa: F401 — blog
 import app.db.stats_models  # noqa: F401 — player stats
 import app.db.user_models  # noqa: F401 — auth + saved rankings
+import app.db.custom_data_models  # noqa: F401 — user-uploaded datasets
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
